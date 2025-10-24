@@ -1,0 +1,27 @@
+- name: Battery
+  topic: /mavros/battery
+  type: sensor_msgs/msg/BatteryState
+  fields:
+    - {label: Voltage, path: voltage, fmt: "{:.2f} V"}
+    - {label: Pct,     path: percentage, fmt: "{:.0%}"}
+    - {label: Current, path: current, fmt: "{:.2f} Ah"}
+- name: GPS
+  topic: /fix
+  type: sensor_msgs/msg/NavSatFix
+  fields:
+    - {label: Lat, path: latitude,  fmt: "{:.6f}"}
+    - {label: Lon, path: longitude, fmt: "{:.6f}"}
+    - {label: Alt, path: altitude,  fmt: "{:.2f} m"}
+
+- name: IMU
+  topic: /imu
+  type: sensor_msgs/msg/Imu
+  fields:
+    - {label: Yaw, computed: yaw_deg, fmt: "{:.1f} °"}
+    - {label: RPY, computed: rpy_deg, fmt: "{}"}
+
+- name: Wheel
+  topic: /wheel/odom
+  type: nav_msgs/msg/Odometry
+  fields:
+    - {label: SpeedX, path: twist.twist.linear.x, fmt: "{:.2f} m/s"}
