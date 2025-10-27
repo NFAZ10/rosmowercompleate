@@ -12,7 +12,7 @@ fi
 case "$1" in
     "build")
         echo "Building ROS mower Docker image..."
-        DOCKER_BUILDKIT=0 docker build -t rosmower:latest .
+        ./build-docker.sh
         ;;
     "run")
         echo "Running ROS mower robot..."

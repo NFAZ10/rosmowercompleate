@@ -1,5 +1,5 @@
-# Multi-stage Docker build for ROS 2 rosmower workspace
-# Use base ROS 2 image that supports both x86_64 and ARM64
+# Multi-stage Docker build for ROS 2 rosmower workspace (ARM64 version)
+# Use base ROS 2 image that supports ARM64
 FROM osrf/ros:jazzy-desktop-noble AS base
 
 # Set environment variables
@@ -64,7 +64,7 @@ WORKDIR /ws
 
 # Copy source code (excluding build artifacts)
 COPY src/ src/
-COPY cyclonedds.xml ./
+COPY cyclonedx.xml ./
 COPY sources.yaml ./
 
 # Initialize rosdep and install dependencies
