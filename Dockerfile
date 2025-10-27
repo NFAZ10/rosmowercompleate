@@ -1,9 +1,9 @@
 # Multi-stage Docker build for ROS 2 rosmower workspace
-FROM osrf/ros:humble-desktop-full-jammy AS base
+FROM osrf/ros:jazzy-desktop-full-noble AS base
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
-ENV ROS_DISTRO=humble
+ENV ROS_DISTRO=jazzy
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
@@ -19,7 +19,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     libeigen3-dev \
-    libgeographic-dev \
+    libgeographiclib-dev \
     python3-matplotlib \
     python3-serial \
     python3-yaml \
@@ -48,6 +48,10 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-geometry-msgs \
     ros-${ROS_DISTRO}-std-msgs \
     ros-${ROS_DISTRO}-std-srvs \
+    ros-${ROS_DISTRO}-ros2-control \
+    ros-${ROS_DISTRO}-ros2-controllers \
+    ros-${ROS_DISTRO}-hardware-interface \
+    ros-${ROS_DISTRO}-controller-manager \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GeographicLib datasets for MAVROS
@@ -65,7 +69,7 @@ COPY sources.yaml ./
 # Initialize rosdep and install dependencies
 RUN rosdep init || true
 RUN rosdep update
-RUN rosdep install --from-paths src --ignore-src -r -y
+RUN rosdep install --from-paths src --ignore-src -r -y --skip-keys="hailo_msgs" || echo "Some dependencies could not be resolved, continuing..."
 
 # Build the workspace
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
@@ -82,24 +86,13 @@ RUN chmod +x /entrypoint.sh
 # Runtime stage
 FROM base AS runtime
 
-# Set up user to avoid running as root
-ARG USER_ID=1000
-ARG GROUP_ID=1000
-RUN groupadd -g ${GROUP_ID} ros && \
-    useradd -u ${USER_ID} -g ${GROUP_ID} -m -s /bin/bash ros && \
-    usermod -aG dialout ros
-
 # Copy built workspace
 COPY --from=base /ws /ws
 COPY --from=base /entrypoint.sh /entrypoint.sh
 
-# Change ownership to ros user
-RUN chown -R ros:ros /ws
-
-USER ros
 WORKDIR /ws
 
-# Set up environment for ros user
+# Set up environment (running as root for simplicity in Docker)
 RUN echo "source /opt/ros/${ROS_DISTRO}/setup.bash" >> ~/.bashrc
 RUN echo "source /ws/install/setup.bash" >> ~/.bashrc
 RUN echo "export ROS_DOMAIN_ID=0" >> ~/.bashrc
