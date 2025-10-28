@@ -3,8 +3,8 @@
   <Domain id="any">
     <General>
       <Interfaces>
-        <NetworkInterface autodetermine="false">eth0</NetworkInterface>
+        <NetworkInterface autodetermine="false">eth1</NetworkInterface>
       </Interfaces>
     </General>
   </Domain>
-</CycloneDDS>
+</CycloneDX>

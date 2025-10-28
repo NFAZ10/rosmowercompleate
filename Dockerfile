@@ -3,7 +3,7 @@
 # Set IMAGE_TYPE to 'ros-core' for minimal or 'desktop' for full desktop
 ARG IMAGE_TYPE=desktop
 ARG ROS_DISTRO=humble
-FROM ros:${ROS_DISTRO}-${IMAGE_TYPE} AS base
+FROM osrf/ros:${ROS_DISTRO}-${IMAGE_TYPE} AS base
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive

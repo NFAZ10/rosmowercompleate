@@ -1,4 +1,3 @@
-
 services:
   rosmower:
     build:
@@ -8,8 +7,12 @@ services:
     image: rosmower:latest
     container_name: rosmower_robot
     privileged: true
-    network_mode: host
     restart: unless-stopped
+    networks:
+      - rosmower_network
+    ports:
+      - "11311:11311"  # ROS Master port
+      - "8080:8080"    # Web interface
     volumes:
       # Mount USB devices and device paths
       - /dev:/dev
@@ -24,7 +27,7 @@ services:
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
-      - CYCLONEDX_URI=file:///ws/cyclonedx.xml
+      - RMW_IMPLEMENTATION=rmw_cyclonedx_cpp
     # Device mappings for specific hardware
     devices:
       - /dev/ttyACM0:/dev/ttyACM0  # MAVROS FCU
@@ -44,13 +47,14 @@ services:
       target: runtime
     image: rosmower:latest
     container_name: rosmower_rviz
-    network_mode: host
+    networks:
+      - rosmower_network
     environment:
       - ROS_DOMAIN_ID=0
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
-      - CYCLONEDX_URI=file:///ws/cyclonedx.xml
+      - RMW_IMPLEMENTATION=rmw_cyclonedx_cpp
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     command: >
@@ -71,7 +75,8 @@ services:
     image: rosmower:latest
     container_name: rosmower_dev
     privileged: true
-    network_mode: host
+    networks:
+      - rosmower_network
     volumes:
       - .:/ws_dev
       - /dev:/dev
@@ -82,8 +87,15 @@ services:
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
-      - CYCLONEDX_URI=file:///ws/cyclonedx.xml
+      - RMW_IMPLEMENTATION=rmw_cyclonedx_cpp
     working_dir: /ws_dev
     command: bash
     profiles:
       - dev
+
+networks:
+  rosmower_network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
