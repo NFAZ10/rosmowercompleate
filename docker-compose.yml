@@ -17,20 +17,20 @@ services:
       - /run/udev:/run/udev:ro
       # Optional: mount external config or logs
       - ./logs:/ws/logs
+      # For GUI applications
+      - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
       - ROS_DOMAIN_ID=0
+      - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
     # Device mappings for specific hardware
     devices:
       - /dev/ttyACM0:/dev/ttyACM0  # MAVROS FCU
       - /dev/ttyUSB0:/dev/ttyUSB0  # Backup for serial devices
-    # For GUI applications
-    volumes:
-      - /tmp/.X11-unix:/tmp/.X11-unix:rw
     command: >
       bash -c "
-      source /opt/ros/jazzy/setup.bash &&
+      source /opt/ros/humble/setup.bash &&
       source /ws/install/setup.bash &&
       ros2 launch rosmower launch_robot.launch.py
       "
@@ -46,13 +46,14 @@ services:
     network_mode: host
     environment:
       - ROS_DOMAIN_ID=0
+      - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     command: >
       bash -c "
-      source /opt/ros/jazzy/setup.bash &&
+      source /opt/ros/humble/setup.bash &&
       source /ws/install/setup.bash &&
       rviz2
       "
@@ -76,6 +77,7 @@ services:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
       - ROS_DOMAIN_ID=0
+      - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
     working_dir: /ws_dev

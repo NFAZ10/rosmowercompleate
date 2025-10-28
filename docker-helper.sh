@@ -12,7 +12,16 @@ fi
 case "$1" in
     "build")
         echo "Building ROS mower Docker image..."
-        ./build-docker.sh
+        # Pass image type argument (slim or desktop, defaults to desktop)
+        ./build-docker.sh "$2"
+        ;;
+    "build-slim")
+        echo "Building slim ROS mower Docker image..."
+        ./build-docker.sh slim
+        ;;
+    "build-desktop")
+        echo "Building desktop ROS mower Docker image..."
+        ./build-docker.sh desktop
         ;;
     "run")
         echo "Running ROS mower robot..."
@@ -56,8 +65,10 @@ case "$1" in
         echo "Usage: $0 [command]"
         echo ""
         echo "Commands:"
-        echo "  build   - Build the Docker image"
-        echo "  run     - Run the robot stack"
+        echo "  build [TYPE]    - Build the Docker image (TYPE: slim or desktop, default: desktop)"
+        echo "  build-slim      - Build slim image (ros-core, minimal ROS)"
+        echo "  build-desktop   - Build desktop image (with GUI components)"
+        echo "  run             - Run the robot stack"
         echo "  dev     - Start development container"
         echo "  rviz    - Start RViz visualization"
         echo "  shell   - Open shell in running container"
@@ -67,8 +78,11 @@ case "$1" in
         echo "  status  - Show Docker status"
         echo ""
         echo "Examples:"
-        echo "  $0 build    # Build the image"
-        echo "  $0 run      # Run the robot"
-        echo "  $0 dev      # Development mode"
+        echo "  $0 build           # Build desktop image (default)"
+        echo "  $0 build slim      # Build slim image"
+        echo "  $0 build-slim      # Build slim image"
+        echo "  $0 build-desktop   # Build desktop image"
+        echo "  $0 run             # Run the robot"
+        echo "  $0 dev             # Development mode"
         ;;
 esac

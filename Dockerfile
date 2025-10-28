@@ -1,10 +1,13 @@
 # Multi-stage Docker build for ROS 2 rosmower workspace
 # Use base ROS 2 image that supports both x86_64 and ARM64
-FROM osrf/ros:jazzy-desktop-noble AS base
+# Set IMAGE_TYPE to 'ros-core' for minimal or 'desktop' for full desktop
+ARG IMAGE_TYPE=desktop
+ARG ROS_DISTRO=humble
+FROM ros:${ROS_DISTRO}-${IMAGE_TYPE} AS base
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
-ENV ROS_DISTRO=jazzy
+ENV ROS_DISTRO=humble
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
@@ -20,7 +23,7 @@ RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
     libeigen3-dev \
-    libgeographiclib-dev \
+    libgeographic-dev \
     python3-matplotlib \
     python3-serial \
     python3-yaml \
