@@ -8,8 +8,7 @@ services:
     container_name: rosmower_robot
     privileged: true
     restart: unless-stopped
-    networks:
-      - rosmower_network
+    network_mode: host
     ports:
       - "11311:11311"  # ROS Master port
       - "8080:8080"    # Web interface
@@ -18,7 +17,7 @@ services:
       - /dev:/dev
       # Mount udev rules for device persistence
       - /run/udev:/run/udev:ro
-      # Optional: mount external config or logs
+      # Optional: mount external config   or logs
       - ./logs:/ws/logs
       # For GUI applications
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
@@ -47,8 +46,7 @@ services:
       target: runtime
     image: rosmower:latest
     container_name: rosmower_rviz
-    networks:
-      - rosmower_network
+    network_mode: host
     environment:
       - ROS_DOMAIN_ID=0
       - ROS_DISTRO=humble
@@ -75,8 +73,7 @@ services:
     image: rosmower:latest
     container_name: rosmower_dev
     privileged: true
-    networks:
-      - rosmower_network
+    network_mode: host
     volumes:
       - .:/ws_dev
       - /dev:/dev
