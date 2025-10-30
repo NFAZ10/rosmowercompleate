@@ -1,4 +1,3 @@
-
 services:
   rosmower:
     build:
@@ -24,7 +23,6 @@ services:
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
-      - CYCLONEDX_URI=file:///ws/cyclonedx.xml
     # Device mappings for specific hardware
     devices:
       - /dev/ttyACM0:/dev/ttyACM0  # MAVROS FCU
@@ -50,7 +48,6 @@ services:
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
-      - CYCLONEDX_URI=file:///ws/cyclonedx.xml
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     command: >
@@ -82,7 +79,6 @@ services:
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
-      - CYCLONEDX_URI=file:///ws/cyclonedx.xml
     working_dir: /ws_dev
     command: bash
     profiles:
