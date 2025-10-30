@@ -30,7 +30,9 @@ RUN apt-get update && apt-get install -y \
     python3-requests \
     python3-scipy \
     python3-numpy \
+    terminator\
     udev \
+    nano\
     && rm -rf /var/lib/apt/lists/*
 
 # Install additional ROS 2 packages that might be needed
@@ -57,6 +59,8 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-hardware-interface \
     ros-${ROS_DISTRO}-controller-manager \
     ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
+    ros-${ROS_DISTRO}-nav2* \
+    ros-${ROS_DISTRO}-slam-toolbox \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GeographicLib datasets for MAVROS

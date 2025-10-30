@@ -250,8 +250,8 @@ def generate_launch_description():
         delayed_hoverboard,
         imu_bridge,
         ekf_node,
-        #delayed_rplidar,
-        #rosbridge_node,
+        delayed_rplidar,
+        rosbridge_node,
         mavros_node,
         tof,
         
