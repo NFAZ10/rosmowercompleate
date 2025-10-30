@@ -24,16 +24,31 @@ case "$1" in
         ./build-docker.sh desktop
         ;;
     "run")
-        echo "Running ROS mower robot..."
-        docker-compose up rosmower
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Running ROS mower robot in detached mode..."
+            docker-compose up -d rosmower
+        else
+            echo "Running ROS mower robot..."
+            docker-compose up rosmower
+        fi
         ;;
     "dev")
-        echo "Starting development container..."
-        docker-compose --profile dev run --rm dev bash
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Starting development container in detached mode..."
+            docker-compose --profile dev run -d --rm dev bash
+        else
+            echo "Starting development container..."
+            docker-compose --profile dev run --rm dev bash
+        fi
         ;;
     "rviz")
-        echo "Starting RViz visualization..."
-        docker-compose --profile gui up rviz
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Starting RViz visualization in detached mode..."
+            docker-compose --profile gui up -d rviz
+        else
+            echo "Starting RViz visualization..."
+            docker-compose --profile gui up rviz
+        fi
         ;;
     "shell")
         echo "Opening shell in running container..."
@@ -68,9 +83,9 @@ case "$1" in
         echo "  build [TYPE]    - Build the Docker image (TYPE: slim or desktop, default: desktop)"
         echo "  build-slim      - Build slim image (ros-core, minimal ROS)"
         echo "  build-desktop   - Build desktop image (with GUI components)"
-        echo "  run             - Run the robot stack"
-        echo "  dev     - Start development container"
-        echo "  rviz    - Start RViz visualization"
+        echo "  run [-d|--detached] - Run the robot stack (optional: detached mode)"
+        echo "  dev [-d|--detached] - Start development container (optional: detached mode)"
+        echo "  rviz [-d|--detached] - Start RViz visualization (optional: detached mode)"
         echo "  shell   - Open shell in running container"
         echo "  logs    - Show container logs"
         echo "  stop    - Stop all containers"
@@ -83,6 +98,8 @@ case "$1" in
         echo "  $0 build-slim      # Build slim image"
         echo "  $0 build-desktop   # Build desktop image"
         echo "  $0 run             # Run the robot"
+        echo "  $0 run -d          # Run the robot in detached mode"
         echo "  $0 dev             # Development mode"
+        echo "  $0 dev -d          # Development mode in detached mode"
         ;;
 esac
