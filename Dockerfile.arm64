@@ -61,6 +61,9 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-image-transport-plugins \
     ros-${ROS_DISTRO}-compressed-image-transport \
     ros-${ROS_DISTRO}-v4l2-camera \
+    ros-${ROS_DISTRO}-nav2* \
+    ros-${ROS_DISTRO}-slam-toolbox \
+    
     && rm -rf /var/lib/apt/lists/*
 
 # Install GeographicLib datasets for MAVROS
