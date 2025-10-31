@@ -227,6 +227,21 @@ def generate_launch_description():
             'angle_compensate': True,
         }],
     )
+    # --- Laser Scan Filter Chain ---
+    laser_filter_params = os.path.join(pkg, 'config', 'laser_filter.yaml')
+    laser_filter = Node(
+        package='laser_filters',
+        executable='scan_to_scan_filter_chain',
+        name='laser_filter',
+        output='log',
+        arguments=['--ros-args', '--log-level', 'warn'],
+        parameters=[laser_filter_params],
+        remappings=[
+        ('scan', '/scan'),                 # input from rplidar_node
+        ('scan_filtered', '/scan_filtered')# output to SLAM / consumers
+        ],
+    )
+
     relay = Node(
         package='rosmower',              # replace with your package
         executable='relay_control_node.py',
@@ -294,6 +309,7 @@ def generate_launch_description():
         imu_bridge,
         ekf_node,
         rplidar_node,
+        laser_filter,   
         rosbridge_node,
         tof,
         camera_node,

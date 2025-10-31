@@ -1,0 +1,16 @@
+laser_filters:
+  ros__parameters:
+    filter1:
+      name: range
+      type: laser_filters/LaserScanRangeFilter
+      params:
+        use_message_range_limits: false
+        lower_threshold: 0.15   # your sensor’s real min range
+        upper_threshold: 8.0    # set for your space
+        lower_replacement_value: 0.0
+        upper_replacement_value: 0.0
+    filter2:
+      name: median
+      type: laser_filters/LaserScanMedianFilter
+      params:
+        window: 5
