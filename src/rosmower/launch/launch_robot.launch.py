@@ -295,10 +295,11 @@ def generate_launch_description():
         ekf_node,
         rplidar_node,
         rosbridge_node,
-        mavros_node,
         tof,
         camera_node,
         image_transport_node,
         battery_splitter_node,
+        mavros_node,
+
         
     ])
