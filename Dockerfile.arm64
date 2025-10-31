@@ -59,7 +59,6 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-joint-trajectory-controller \
     ros-${ROS_DISTRO}-image-transport-plugins \
     ros-${ROS_DISTRO}-compressed-image-transport \
-    ros-${ROS_DISTRO}-v4l2-ros \
     ros-${ROS_DISTRO}-v4l2-camera \
     && rm -rf /var/lib/apt/lists/*
 
