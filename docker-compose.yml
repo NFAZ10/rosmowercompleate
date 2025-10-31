@@ -55,7 +55,7 @@ services:
       bash -c "
       source /opt/ros/humble/setup.bash &&
       source /ws/install/setup.bash &&
-      rviz2
+        rviz2 /root/test.rviz
       "
     profiles:
       - gui
