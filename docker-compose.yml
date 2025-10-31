@@ -50,6 +50,7 @@ services:
       - QT_X11_NO_MITSHM=1
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      - ./rviz_configs:/root
     command: >
       bash -c "
       source /opt/ros/humble/setup.bash &&
