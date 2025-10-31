@@ -67,6 +67,10 @@ case "$1" in
         docker-compose down
         docker rmi rosmower:latest 2>/dev/null || true
         ;;
+    "start")
+        echo "Starting development container with Terminator terminal..."
+        docker-compose --profile dev run --rm dev terminator
+        ;;
     "status")
         echo "Docker status:"
         docker ps -a --filter "name=rosmower"
