@@ -25,6 +25,49 @@ RPLIDAR_BY_ID = "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Co
 DEFAULT_FCU = '/dev/ttyACM0'
 
 def generate_launch_description():
+    # --- Battery Splitter Node ---
+    battery_splitter_node = Node(
+        package='rosmower',
+        executable='battery_splitter.py',
+        name='battery_splitter',
+        output='screen',
+        parameters=[{
+            'source_topic': '/mavros/battery',
+            'voltage_topic': '/voltage',
+            'percent_topic': '/percent',
+            'current_topic': '/current',
+            'percent_scale_0_100': True
+        }]
+    )
+    # --- Camera Node (v4l2_camera) ---
+    camera_node = Node(
+        package='v4l2_camera',
+        executable='v4l2_camera_node',
+        name='v4l2_camera',
+        namespace='camera',
+        output='screen',
+        parameters=[{
+            'video_device': '/dev/video0',
+            'image_size': [640, 480],
+            'time_per_frame': [1, 30],
+            'pixel_format': 'YUYV',
+            'output_encoding': 'bgr8',
+            'camera_frame_id': 'camera_link_optical'
+        }]
+    )
+
+    # --- Image Transport Republish Node (compressed topic) ---
+    image_transport_node = Node(
+        package='image_transport',
+        executable='republish',
+        name='image_republish',
+        output='screen',
+        arguments=['raw', 'compressed'],
+        remappings=[
+            ('in', '/camera/image_raw'),
+            ('out', '/camera/image_raw/compressed')
+        ]
+    )
     pkg = get_package_share_directory('rosmower')
 
     # --- Launch arguments ---
@@ -254,5 +297,8 @@ def generate_launch_description():
         rosbridge_node,
         mavros_node,
         tof,
+        camera_node,
+        image_transport_node,
+        battery_splitter_node,
         
     ])
