@@ -1,0 +1,21 @@
+[Unit]
+Description=ROS Mower Web Control Server
+After=network.target docker.service
+Wants=docker.service
+
+[Service]
+Type=simple
+User=nfazio
+Group=nfazio
+WorkingDirectory=/mnt/nova_ssd/rosmowercompleate
+ExecStart=/usr/bin/python3 /mnt/nova_ssd/rosmowercompleate/web_server.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Allow running docker commands
+SupplementaryGroups=docker
+
+[Install]
+WantedBy=multi-user.target

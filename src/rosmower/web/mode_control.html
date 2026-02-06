@@ -1,0 +1,862 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ROS Mower Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            color: #fff;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+            padding-top: 60px;
+        }
+        
+        .status-bar {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 40px;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0 20px;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+        
+        .status-bar-left,
+        .status-bar-right {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        .status-bar-center {
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            font-size: 0.85em;
+        }
+        
+        .nav-link {
+            color: #fff;
+            text-decoration: none;
+            padding: 6px 12px;
+            background: rgba(76, 175, 80, 0.2);
+            border-radius: 6px;
+            font-size: 0.85em;
+            transition: all 0.3s;
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+        
+        .nav-link:hover {
+            background: rgba(76, 175, 80, 0.4);
+            border-color: rgba(76, 175, 80, 0.6);
+        }
+        
+        .battery-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .battery-icon {
+            width: 24px;
+            height: 12px;
+            border: 2px solid #fff;
+            border-radius: 2px;
+            position: relative;
+            padding: 1px;
+        }
+        
+        .battery-icon::after {
+            content: '';
+            position: absolute;
+            right: -4px;
+            top: 2px;
+            width: 2px;
+            height: 4px;
+            background: #fff;
+            border-radius: 0 2px 2px 0;
+        }
+        
+        .battery-fill {
+            height: 100%;
+            background: #4CAF50;
+            border-radius: 1px;
+            transition: width 0.3s, background 0.3s;
+        }
+        
+        .battery-fill.low {
+            background: #FFC107;
+        }
+        
+        .battery-fill.critical {
+            background: #f44336;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        .battery-percent {
+            font-size: 0.85em;
+            min-width: 35px;
+        }
+        
+        .gps-status {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .gps-icon {
+            font-size: 1.1em;
+        }
+        
+        .gps-quality {
+            font-size: 0.85em;
+        }
+        
+        .gps-status.no-fix {
+            opacity: 0.5;
+        }
+        
+        .gps-status.fix {
+            color: #4CAF50;
+        }
+        
+        .gps-status.rtk {
+            color: #2196F3;
+        }
+        
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 20px;
+            padding: 40px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            max-width: 600px;
+            width: 100%;
+        }
+        
+        h1 {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+        
+        .status {
+            text-align: center;
+            margin-bottom: 30px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 8px;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-indicator.connected {
+            background: #4CAF50;
+        }
+        
+        .status-indicator.disconnected {
+            background: #f44336;
+            animation: none;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .current-mode {
+            font-size: 1.2em;
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 8px;
+            text-transform: uppercase;
+            font-weight: bold;
+        }
+        
+        .mode-buttons {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .mode-btn {
+            padding: 25px 20px;
+            font-size: 1.2em;
+            font-weight: bold;
+            border: none;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #fff;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .mode-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+        
+        .mode-btn:active {
+            transform: translateY(-1px);
+        }
+        
+        .mode-btn.active {
+            box-shadow: 0 0 20px rgba(255,255,255,0.5), inset 0 0 10px rgba(0,0,0,0.3);
+            transform: scale(0.98);
+        }
+        
+        .idle-btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .charging-btn {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .mowing-btn {
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+        }
+        
+        .full-btn {
+            background: linear-gradient(135deg, #43e97b 0%, #38f9d7 100%);
+        }
+        
+        .mode-description {
+            display: block;
+            font-size: 0.7em;
+            font-weight: normal;
+            margin-top: 5px;
+            opacity: 0.9;
+        }
+        
+        .connection-form {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+        
+        .connection-form input {
+            width: calc(100% - 120px);
+            padding: 12px;
+            border: none;
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.9);
+            margin-right: 10px;
+            font-size: 1em;
+        }
+        
+        .connection-form button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            background: #4CAF50;
+            color: white;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        
+        .connection-form button:hover {
+            background: #45a049;
+        }
+        
+        .info {
+            margin-top: 30px;
+            padding: 15px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            font-size: 0.9em;
+        }
+        
+        .info p {
+            margin: 5px 0;
+        }
+        
+        .system-controls {
+            margin-top: 30px;
+            padding: 20px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+        }
+        
+        .system-controls h3 {
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 1.3em;
+        }
+        
+        .control-buttons {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        
+        .control-btn {
+            padding: 12px 10px;
+            font-size: 0.9em;
+            font-weight: bold;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #fff;
+            text-shadow: 1px 1px 2px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+        
+        .control-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+        }
+        
+        .control-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .btn-launch {
+            background: linear-gradient(135deg, #11998e 0%, #38ef7d 100%);
+        }
+        
+        .btn-stat {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .btn-gps {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+        }
+        
+        .btn-bridge {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .btn-rqt {
+            background: linear-gradient(135deg, #3f51b5 0%, #5a55ae 100%);
+        }
+        
+        .btn-restart {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+        }
+        
+        .btn-stop {
+            background: linear-gradient(135deg, #eb3349 0%, #f45c43 100%);
+        }
+        
+        .btn-stop-launch {
+            background: linear-gradient(135deg, #d32f2f 0%, #b71c1c 100%);
+        }
+        
+        .btn-stop-bridge {
+            background: linear-gradient(135deg, #c2185b 0%, #880e4f 100%);
+        }
+        
+        .btn-stop-status {
+            background: linear-gradient(135deg, #7b1fa2 0%, #4a148c 100%);
+        }
+        
+        .btn-node-status {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+        
+        .log-output {
+            margin-top: 15px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 8px;
+            max-height: 150px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.75em;
+            display: none;
+        }
+        
+        .log-output.show {
+            display: block;
+        }
+        
+        .system-status {
+            margin-top: 10px;
+            padding: 8px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 6px;
+            font-size: 0.85em;
+        }
+    </style>
+</head>
+<body>
+    <div class="status-bar">
+        <div class="status-bar-left">
+            <div class="status-item gps-status" id="gps-status">
+                <span class="gps-icon">📡</span>
+                <span class="gps-quality" id="gps-quality">No GPS</span>
+            </div>
+        </div>
+        <div class="status-bar-center">
+            <span id="time-display">--:--</span>
+        </div>
+        <div class="status-bar-right">
+            <a href="/camera" class="nav-link">📹 Camera Control</a>
+            <div class="status-item battery-container">
+                <div class="battery-icon">
+                    <div class="battery-fill" id="battery-fill" style="width: 0%"></div>
+                </div>
+                <span class="battery-percent" id="battery-percent">--%</span>
+            </div>
+        </div>
+    </div>
+    
+    <div class="container">
+        <h1>🤖 ROS Mower</h1>
+        
+        <div class="connection-form">
+            <input type="text" id="rosbridge-url" placeholder="ws://10.31.18.195:9090" value="ws://10.31.18.195:9090">
+            <button onclick="connectToROS()">Connect</button>
+        </div>
+        
+        <div class="status">
+            <div>
+                <span class="status-indicator disconnected" id="status-dot"></span>
+                <span id="connection-status">Disconnected</span>
+            </div>
+            <div class="current-mode" id="current-mode">Mode: Unknown</div>
+        </div>
+        
+        <div class="mode-buttons">
+            <button class="mode-btn idle-btn" onclick="setMode('idle')">
+                💤 IDLE
+                <span class="mode-description">All systems off</span>
+            </button>
+            <button class="mode-btn charging-btn" onclick="setMode('charging')">
+                🔋 CHARGING
+                <span class="mode-description">Battery monitoring only</span>
+            </button>
+            <button class="mode-btn mowing-btn" onclick="setMode('mowing')">
+                🌱 MOWING
+                <span class="mode-description">Full autonomous mode</span>
+            </button>
+            <button class="mode-btn full-btn" onclick="setMode('full')">
+                ⚡ FULL
+                <span class="mode-description">All systems active</span>
+            </button>
+        </div>
+        
+        <div class="info">
+            <p><strong>Mode Descriptions:</strong></p>
+            <p>💤 <strong>IDLE:</strong> All systems disabled for low power consumption</p>
+            <p>🔋 <strong>CHARGING:</strong> Battery monitoring active, motors disabled</p>
+            <p>🌱 <strong>MOWING:</strong> Full autonomous operation with all sensors</p>
+            <p>⚡ <strong>FULL:</strong> All systems enabled for maximum capability</p>
+        </div>
+        
+        <div class="system-controls">
+            <h3>🛠️ System Controls</h3>
+            <div class="system-status" id="system-status">
+                Checking system status...
+            </div>
+            <div class="control-buttons">
+                <button class="control-btn btn-launch" onclick="executeCommand('launch')">
+                    🚀 Launch
+                </button>
+                <button class="control-btn btn-stat" onclick="executeCommand('stat')">
+                    📊 Status
+                </button>
+                <button class="control-btn btn-gps" onclick="executeCommand('gps')">
+                    🛰️ GPS
+                </button>
+                <button class="control-btn btn-bridge" onclick="executeCommand('bridge')">
+                    🌉 Bridge
+                </button>
+                <button class="control-btn btn-rqt" onclick="executeCommand('rqt')">
+                    📊 RQt
+                </button>
+                <button class="control-btn btn-cleanup" onclick="executeCommand('cleanup')" style="background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);">
+                    🧹 Cleanup
+                </button>
+                <button class="control-btn btn-restart" onclick="restartDocker()">
+                    🔄 Restart
+                </button>
+                <button class="control-btn btn-stop" onclick="stopDocker()">
+                    ⏹️ Stop All
+                </button>
+                <button class="control-btn btn-node-status" onclick="window.open('/status', '_blank')">
+                    🤖 Node Status
+                </button>
+            </div>
+            
+            <h3 style="margin-top: 25px;">🔴 Stop Individual Containers</h3>
+            <div class="control-buttons">
+                <button class="control-btn btn-stop-launch" onclick="stopContainer('rosmower_launch')">
+                    ⏹️ Stop Launch
+                </button>
+                <button class="control-btn btn-stop-bridge" onclick="stopContainer('rosmower_bridge')">
+                    ⏹️ Stop Bridge
+                </button>
+                <button class="control-btn btn-stop-status" onclick="stopContainer('rosmower_status')">
+                    ⏹️ Stop Status
+                </button>
+            </div>
+            
+            <div class="log-output" id="log-output"></div>
+        </div>
+    </div>
+
+    <script>
+        let ros = null;
+        let modeCommandTopic = null;
+        let modeStatusTopic = null;
+        let batteryTopic = null;
+        let gpsStatusTopic = null;
+        let currentMode = 'unknown';
+        const API_BASE = window.location.origin;
+
+        // Check system status periodically
+        setInterval(checkSystemStatus, 5000);
+        checkSystemStatus();
+        
+        // Update time display
+        updateTimeDisplay();
+        setInterval(updateTimeDisplay, 1000);
+        
+        function updateTimeDisplay() {
+            const now = new Date();
+            const hours = now.getHours().toString().padStart(2, '0');
+            const minutes = now.getMinutes().toString().padStart(2, '0');
+            document.getElementById('time-display').textContent = `${hours}:${minutes}`;
+        }
+        
+        function updateBatteryDisplay(percentage, voltage = null) {
+            const fill = document.getElementById('battery-fill');
+            const percent = document.getElementById('battery-percent');
+            
+            fill.style.width = percentage + '%';
+            percent.textContent = Math.round(percentage) + '%';
+            
+            fill.className = 'battery-fill';
+            if (percentage < 20) {
+                fill.classList.add('critical');
+            } else if (percentage < 40) {
+                fill.classList.add('low');
+            }
+        }
+        
+        function updateGPSDisplay(status, quality = 0) {
+            const gpsStatus = document.getElementById('gps-status');
+            const gpsQuality = document.getElementById('gps-quality');
+            
+            gpsStatus.className = 'status-item gps-status';
+            
+            if (status === 'RTK_FIXED' || quality >= 4) {
+                gpsStatus.classList.add('rtk');
+                gpsQuality.textContent = 'RTK Fix';
+            } else if (status === 'RTK_FLOAT' || quality >= 3) {
+                gpsStatus.classList.add('rtk');
+                gpsQuality.textContent = 'RTK Float';
+            } else if (status === '3D_FIX' || quality >= 2) {
+                gpsStatus.classList.add('fix');
+                gpsQuality.textContent = '3D Fix';
+            } else if (status === '2D_FIX' || quality >= 1) {
+                gpsStatus.classList.add('fix');
+                gpsQuality.textContent = '2D Fix';
+            } else {
+                gpsStatus.classList.add('no-fix');
+                gpsQuality.textContent = 'No GPS';
+            }
+        }
+
+        function checkSystemStatus() {
+            fetch(`${API_BASE}/api/status`)
+                .then(response => response.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('system-status');
+                    let statusText = '';
+                    
+                    if (data.container_running) {
+                        statusText += '🟢 Container: Running';
+                        if (data.rosbridge_running) {
+                            statusText += ' | ROS Bridge: ✅';
+                        } else {
+                            statusText += ' | ROS Bridge: ❌';
+                        }
+                    } else {
+                        statusText = '🔴 Container: Not Running';
+                    }
+                    
+                    statusDiv.textContent = statusText;
+                })
+                .catch(error => {
+                    document.getElementById('system-status').textContent = 
+                        '⚠️ Unable to check status (Web server may not be running)';
+                });
+        }
+
+        function executeCommand(cmd) {
+            const logDiv = document.getElementById('log-output');
+            logDiv.classList.add('show');
+            logDiv.textContent = `Executing ${cmd}...\n`;
+            
+            fetch(`${API_BASE}/api/command/${cmd}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        logDiv.textContent += `\n❌ Error: ${data.error}\n`;
+                    } else if (data.status === 'started') {
+                        logDiv.textContent += `\n✅ ${data.message}\n`;
+                        setTimeout(checkSystemStatus, 2000);
+                    } else {
+                        logDiv.textContent += `\n✅ Command completed\n`;
+                        if (data.stdout) logDiv.textContent += data.stdout;
+                        if (data.stderr) logDiv.textContent += data.stderr;
+                        setTimeout(checkSystemStatus, 1000);
+                    }
+                    logDiv.scrollTop = logDiv.scrollHeight;
+                })
+                .catch(error => {
+                    logDiv.textContent += `\n❌ Error: ${error.message}\n`;
+                });
+        }
+
+        function restartDocker() {
+            if (!confirm('Restart the Docker container? This will stop all ROS nodes.')) {
+                return;
+            }
+            
+            const logDiv = document.getElementById('log-output');
+            logDiv.classList.add('show');
+            logDiv.textContent = 'Restarting Docker container...\n';
+            
+            fetch(`${API_BASE}/api/docker/restart`)
+                .then(response => response.json())
+                .then(data => {
+                    logDiv.textContent += data.status === 'success' ? 
+                        '\n✅ Container restarted\n' : 
+                        `\n❌ Failed: ${data.output}\n`;
+                    setTimeout(checkSystemStatus, 2000);
+                })
+                .catch(error => {
+                    logDiv.textContent += `\n❌ Error: ${error.message}\n`;
+                });
+        }
+
+        function stopDocker() {
+            if (!confirm('Stop the Docker container? This will stop all ROS nodes.')) {
+                return;
+            }
+            
+            const logDiv = document.getElementById('log-output');
+            logDiv.classList.add('show');
+            logDiv.textContent = 'Stopping Docker container...\n';
+            
+            fetch(`${API_BASE}/api/command/stop`)
+                .then(response => response.json())
+                .then(data => {
+                    logDiv.textContent += data.status === 'completed' ? 
+                        `\n✅ Container stopped\n${data.stdout}` : 
+                        `\n❌ Failed: ${data.stderr || data.error}\n`;
+                    setTimeout(checkSystemStatus, 1000);
+                })
+                .catch(error => {
+                    logDiv.textContent += `\n❌ Error: ${error.message}\n`;
+                });
+        }
+
+        function stopContainer(containerName) {
+            const containerLabels = {
+                'rosmower_launch': 'Launch',
+                'rosmower_bridge': 'Bridge',
+                'rosmower_status': 'Status'
+            };
+            
+            const label = containerLabels[containerName] || containerName;
+            
+            if (!confirm(`Stop ${label} container(s)?`)) {
+                return;
+            }
+            
+            const logDiv = document.getElementById('log-output');
+            logDiv.classList.add('show');
+            logDiv.textContent = `Stopping ${label} container(s)...\n`;
+            
+            fetch(`${API_BASE}/api/container/stop/${containerName}`)
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        logDiv.textContent += `\n✅ ${data.message}\n`;
+                        if (data.containers) {
+                            logDiv.textContent += `Stopped: ${data.containers.join(', ')}\n`;
+                        }
+                    } else if (data.status === 'not_found') {
+                        logDiv.textContent += `\n⚠️ ${data.message}\n`;
+                    } else {
+                        logDiv.textContent += `\n❌ Failed: ${data.error}\n`;
+                    }
+                    setTimeout(checkSystemStatus, 1000);
+                })
+                .catch(error => {
+                    logDiv.textContent += `\n❌ Error: ${error.message}\n`;
+                });
+        }
+
+        function connectToROS() {
+            const url = document.getElementById('rosbridge-url').value;
+            
+            if (ros) {
+                ros.close();
+            }
+            
+            ros = new ROSLIB.Ros({
+                url: url
+            });
+
+            ros.on('connection', function() {
+                console.log('Connected to ROS!');
+                updateConnectionStatus(true);
+                setupTopics();
+            });
+
+            ros.on('error', function(error) {
+                console.log('Error connecting to ROS: ', error);
+                updateConnectionStatus(false);
+            });
+
+            ros.on('close', function() {
+                console.log('Connection to ROS closed.');
+                updateConnectionStatus(false);
+            });
+        }
+
+        function setupTopics() {
+            modeCommandTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/robot_mode_cmd',
+                messageType: 'std_msgs/String'
+            });
+
+            modeStatusTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/robot_mode',
+                messageType: 'std_msgs/String'
+            });
+
+            modeStatusTopic.subscribe(function(message) {
+                currentMode = message.data;
+                updateModeDisplay(currentMode);
+            });
+            
+            // Subscribe to battery status
+            batteryTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/battery_state',
+                messageType: 'sensor_msgs/BatteryState'
+            });
+            
+            batteryTopic.subscribe(function(message) {
+                const percentage = message.percentage * 100;
+                updateBatteryDisplay(percentage, message.voltage);
+            });
+            
+            // Subscribe to GPS status
+            gpsStatusTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/gps/fix',
+                messageType: 'sensor_msgs/NavSatFix'
+            });
+            
+            gpsStatusTopic.subscribe(function(message) {
+                // NavSatFix status: -1=no fix, 0=fix, 1=sbas, 2=gbas
+                // quality from position_covariance_type: 0=unknown, 1=approximated, 2=diagonal, 3=known
+                const quality = message.status ? message.status.status : 0;
+                updateGPSDisplay('', quality);
+            });
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusDot = document.getElementById('status-dot');
+            const statusText = document.getElementById('connection-status');
+            
+            if (connected) {
+                statusDot.className = 'status-indicator connected';
+                statusText.textContent = 'Connected to ROS';
+            } else {
+                statusDot.className = 'status-indicator disconnected';
+                statusText.textContent = 'Disconnected';
+            }
+        }
+
+        function updateModeDisplay(mode) {
+            const modeDisplay = document.getElementById('current-mode');
+            modeDisplay.textContent = 'Mode: ' + mode.toUpperCase();
+            
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            const activeBtn = document.querySelector('.' + mode + '-btn');
+            if (activeBtn) {
+                activeBtn.classList.add('active');
+            }
+        }
+
+        function setMode(mode) {
+            if (!ros || !ros.isConnected) {
+                alert('Not connected to ROS! Please connect first.');
+                return;
+            }
+
+            const modeMessage = new ROSLIB.Message({
+                data: mode
+            });
+
+            modeCommandTopic.publish(modeMessage);
+            console.log('Mode set to: ' + mode);
+        }
+
+        window.onload = function() {
+            setTimeout(connectToROS, 500);
+        };
+    </script>
+</body>
+</html>

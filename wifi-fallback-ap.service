@@ -1,0 +1,15 @@
+[Unit]
+Description=WiFi Fallback Access Point
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/mnt/nova_ssd/rosmowercompleate/wifi-fallback-ap.sh
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

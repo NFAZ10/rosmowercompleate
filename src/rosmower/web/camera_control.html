@@ -1,0 +1,756 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <title>ROS Mower Camera Control</title>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: #1a1a1a;
+            color: #fff;
+            min-height: 100vh;
+            overflow: hidden;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+        
+        .container {
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            height: 100vh;
+            width: 100vw;
+        }
+        
+        /* Status Bar */
+        .status-bar {
+            background: rgba(0, 0, 0, 0.9);
+            padding: 8px 12px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid #333;
+            flex-shrink: 0;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.8em;
+        }
+        
+        .status-item span:not(.status-indicator) {
+            display: none;
+        }
+        
+        .status-indicator {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #666;
+            transition: background 0.3s;
+        }
+        
+        .status-indicator.connected {
+            background: #4CAF50;
+            box-shadow: 0 0 10px #4CAF50;
+        }
+        
+        /* Main Content */
+        .main-content {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            padding: 8px;
+            overflow: hidden;
+            height: 100%;
+        }
+        
+        /* Camera View */
+        .camera-section {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 10px;
+            overflow: hidden;
+            flex: 0 0 auto;
+            min-height: 0;
+        }
+        
+        .camera-title {
+            font-size: 0.95em;
+            font-weight: 600;
+            color: #4CAF50;
+            text-align: center;
+        }
+        
+        .camera-container {
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            aspect-ratio: 16 / 9;
+            max-height: 35vh;
+        }
+        
+        .camera-view {
+            background: #1a1a1a;
+            border-radius: 8px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            border: 2px solid #333;
+            transition: border-color 0.3s;
+            height: 100%;
+        }
+        
+        .camera-view:hover {
+            border-color: #4CAF50;
+        }
+        
+        .camera-label {
+            padding: 6px;
+            background: #333;
+            font-size: 0.75em;
+            text-align: center;
+        }
+        
+        .camera-canvas {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+        }
+        
+        .camera-placeholder {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            min-height: 150px;
+            flex: 1;
+            color: #666;
+            font-size: 0.85em;
+        }
+        
+        /* Control Panel */
+        .control-panel {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            background: #2a2a2a;
+            border-radius: 8px;
+            padding: 10px;
+            overflow-y: auto;
+            flex: 1;
+            min-height: 0;
+        }
+        
+        .control-section {
+            background: #1a1a1a;
+            border-radius: 8px;
+            padding: 12px;
+            border: 1px solid #333;
+            flex-shrink: 0;
+        }
+        
+        .section-title {
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #4CAF50;
+            margin-bottom: 10px;
+            text-align: center;
+        }
+        
+        /* Joystick */
+        .joystick-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .joystick-wrapper {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .joystick-label {
+            font-size: 0.8em;
+            color: #999;
+            font-weight: 600;
+        }
+        
+        .joystick {
+            width: min(180px, 50vw);
+            height: min(180px, 50vw);
+            background: #0a0a0a;
+            border-radius: 50%;
+            position: relative;
+            border: 3px solid #333;
+            cursor: pointer;
+            touch-action: none;
+        }
+        
+        .joystick-center {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: #666;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        .joystick-stick {
+            position: absolute;
+            width: min(45px, 12vw);
+            height: min(45px, 12vw);
+            background: radial-gradient(circle, #4CAF50, #2e7d32);
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            transition: all 0.1s;
+            border: 3px solid #1b5e20;
+            box-shadow: 0 0 20px rgba(76, 175, 80, 0.5);
+        }
+        
+        .joystick-stick.active {
+            background: radial-gradient(circle, #66BB6A, #4CAF50);
+            box-shadow: 0 0 30px rgba(76, 175, 80, 0.8);
+        }
+        
+        .joystick-values {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+            width: 100%;
+            margin-top: 8px;
+        }
+        
+        .value-display {
+            background: #0a0a0a;
+            padding: 6px;
+            border-radius: 4px;
+            text-align: center;
+            border: 1px solid #333;
+        }
+        
+        .value-label {
+            font-size: 0.65em;
+            color: #999;
+            margin-bottom: 3px;
+        }
+        
+        .value-number {
+            font-size: 0.9em;
+            font-weight: 600;
+            color: #4CAF50;
+            font-family: 'Courier New', monospace;
+        }
+        
+        /* Buttons */
+        .button-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        
+        .control-button {
+            padding: 14px;
+            background: #333;
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 1em;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-weight: 600;
+            min-height: 48px;
+            touch-action: manipulation;
+        }
+        
+        .control-button:active {
+            background: #4CAF50;
+            transform: scale(0.98);
+        }
+        
+        .control-button.danger {
+            background: #d32f2f;
+        }
+        
+        .control-button.danger:active {
+            background: #f44336;
+        }
+        
+        /* Speed Control */
+        .speed-control {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        
+        .speed-slider {
+            width: 100%;
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+            background: linear-gradient(to right, #4CAF50 0%, #4CAF50 var(--value), #333 var(--value), #333 100%);
+            -webkit-appearance: none;
+        }
+        
+        .speed-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+        
+        .speed-slider::-moz-range-thumb {
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            background: #4CAF50;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 10px rgba(76, 175, 80, 0.5);
+        }
+        
+        .speed-value {
+            text-align: center;
+            font-size: 1.1em;
+            color: #4CAF50;
+            font-weight: 600;
+        }
+        
+        /* Footer */
+        .footer {
+            background: rgba(0, 0, 0, 0.9);
+            padding: 6px 12px;
+            text-align: center;
+            font-size: 0.7em;
+            color: #666;
+            border-top: 2px solid #333;
+            flex-shrink: 0;
+        }
+        
+        /* Landscape mode adjustments */
+        @media (orientation: landscape) {
+            .main-content {
+                flex-direction: row;
+            }
+            
+            .camera-section {
+                flex: 1;
+                min-width: 0;
+            }
+            
+            .camera-container {
+                max-height: none;
+                height: 100%;
+            }
+            
+            .control-panel {
+                flex: 0 0 320px;
+                max-width: 320px;
+            }
+            
+            .status-item span:not(.status-indicator) {
+                display: inline;
+            }
+        }
+        
+        /* Tablet and larger screens */
+        @media (min-width: 768px) {
+            .main-content {
+                flex-direction: row;
+                padding: 10px;
+            }
+            
+            .camera-section {
+                flex: 1;
+                padding: 15px;
+            }
+            
+            .camera-container {
+                max-height: none;
+                height: 100%;
+            }
+            
+            .control-panel {
+                flex: 0 0 350px;
+                padding: 15px;
+            }
+            
+            .status-bar {
+                padding: 10px 20px;
+            }
+            
+            .status-item {
+                font-size: 0.9em;
+            }
+            
+            .status-item span:not(.status-indicator) {
+                display: inline;
+            }
+            
+            .joystick {
+                width: 200px;
+                height: 200px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-indicator" id="ros-status"></span>
+                <span>ROS Bridge</span>
+            </div>
+            <div class="status-item">
+                <span>Camera Control Interface</span>
+            </div>
+            <div class="status-item">
+                <span id="connection-text">Connecting...</span>
+            </div>
+        </div>
+        
+        <!-- Main Content -->
+        <div class="main-content">
+            <!-- Camera Section -->
+            <div class="camera-section">
+                <div class="camera-title">USB Camera Feed</div>
+                <div class="camera-container">
+                    <div class="camera-view">
+                        <div class="camera-label">Camera</div>
+                        <canvas id="camera-feed" class="camera-canvas"></canvas>
+                        <div class="camera-placeholder" id="placeholder-feed">Waiting for feed...</div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Control Panel -->
+            <div class="control-panel">
+                <!-- Joystick Control -->
+                <div class="control-section">
+                    <div class="section-title">Movement Control</div>
+                    <div class="joystick-container">
+                        <div class="joystick-wrapper">
+                            <div class="joystick" id="joystick">
+                                <div class="joystick-center"></div>
+                                <div class="joystick-stick" id="joystick-stick"></div>
+                            </div>
+                        </div>
+                        <div class="joystick-values">
+                            <div class="value-display">
+                                <div class="value-label">Linear (m/s)</div>
+                                <div class="value-number" id="linear-value">0.00</div>
+                            </div>
+                            <div class="value-display">
+                                <div class="value-label">Angular (rad/s)</div>
+                                <div class="value-number" id="angular-value">0.00</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Speed Control -->
+                <div class="control-section">
+                    <div class="section-title">Speed Limit</div>
+                    <div class="speed-control">
+                        <input type="range" class="speed-slider" id="speed-slider" 
+                               min="0" max="100" value="75" style="--value: 75%">
+                        <div class="speed-value"><span id="speed-display">75</span>%</div>
+                    </div>
+                </div>
+                
+                <!-- Control Buttons -->
+                <div class="control-section">
+                    <div class="section-title">Quick Actions</div>
+                    <div class="button-group">
+                        <button class="control-button" onclick="centerJoysticks()">Center</button>
+                        <button class="control-button danger" onclick="emergencyStop()">E-STOP</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Footer -->
+        <div class="footer">
+            Joystick Control: Up/Down = forward/backward, Left/Right = turn • Adjust speed with slider • Click E-STOP to halt
+        </div>
+    </div>
+    
+    <script>
+        // ROS Connection
+        let ros = null;
+        let cmdVelTopic = null;
+        let imageTopic = null;
+        
+        // Joystick state
+        let joystickActive = false;
+        let speedMultiplier = 0.75;
+        let maxLinearSpeed = 1.0; // m/s
+        let maxAngularSpeed = 2.0; // rad/s
+        
+        // Connect to ROS
+        function connectROS() {
+            ros = new ROSLIB.Ros({
+                url: 'ws://10.31.18.195:9090'
+            });
+            
+            ros.on('connection', function() {
+                console.log('Connected to ROSBridge');
+                document.getElementById('ros-status').classList.add('connected');
+                document.getElementById('connection-text').textContent = 'Connected';
+                setupTopics();
+            });
+            
+            ros.on('error', function(error) {
+                console.log('Error connecting to ROSBridge:', error);
+                document.getElementById('connection-text').textContent = 'Connection Error';
+            });
+            
+            ros.on('close', function() {
+                console.log('Connection to ROSBridge closed');
+                document.getElementById('ros-status').classList.remove('connected');
+                document.getElementById('connection-text').textContent = 'Disconnected';
+                setTimeout(connectROS, 2000);
+            });
+        }
+        
+        // Setup ROS topics
+        function setupTopics() {
+            // Command velocity publisher
+            cmdVelTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/cmd_vel',
+                messageType: 'geometry_msgs/Twist'
+            });
+            
+            // Advertise the topic
+            cmdVelTopic.advertise();
+            
+            console.log('Command velocity topic advertised on /cmd_vel');
+            
+            // Camera subscriber (compressed image)
+            imageTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/camera/image_compressed',
+                messageType: 'sensor_msgs/CompressedImage'
+            });
+            
+            // Subscribe to camera feed
+            imageTopic.subscribe(function(message) {
+                displayImage('camera-feed', 'placeholder-feed', message.data);
+            });
+        }
+        
+        // Display image on canvas
+        function displayImage(canvasId, placeholderId, base64Data) {
+            const canvas = document.getElementById(canvasId);
+            const placeholder = document.getElementById(placeholderId);
+            const ctx = canvas.getContext('2d');
+            
+            const img = new Image();
+            img.onload = function() {
+                canvas.width = img.width;
+                canvas.height = img.height;
+                ctx.drawImage(img, 0, 0);
+                canvas.style.display = 'block';
+                placeholder.style.display = 'none';
+            };
+            img.src = 'data:image/jpeg;base64,' + base64Data;
+        }
+        
+        // Publish velocity command
+        function publishVelocity(linear, angular) {
+            if (!cmdVelTopic) {
+                console.warn('cmdVelTopic not initialized');
+                return;
+            }
+            
+            // Apply speed multiplier
+            linear = linear * speedMultiplier;
+            angular = angular * speedMultiplier;
+            
+            const twist = new ROSLIB.Message({
+                linear: {
+                    x: linear,
+                    y: 0.0,
+                    z: 0.0
+                },
+                angular: {
+                    x: 0.0,
+                    y: 0.0,
+                    z: angular
+                }
+            });
+            
+            cmdVelTopic.publish(twist);
+            console.log(`Publishing cmd_vel: linear=${linear.toFixed(2)}, angular=${angular.toFixed(2)}`);
+            
+            // Update display
+            document.getElementById('linear-value').textContent = linear.toFixed(2);
+            document.getElementById('angular-value').textContent = angular.toFixed(2);
+        }
+        
+        // Joystick handling - will be initialized after DOM loads
+        let joystick, joystickStick, speedSlider;
+        
+        function handleJoystickMove(e) {
+            if (!joystickActive) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const rect = joystick.getBoundingClientRect();
+            const centerX = rect.width / 2;
+            const centerY = rect.height / 2;
+            
+            let clientX, clientY;
+            if (e.type.includes('touch')) {
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX - rect.left;
+                    clientY = e.touches[0].clientY - rect.top;
+                } else if (e.changedTouches && e.changedTouches.length > 0) {
+                    clientX = e.changedTouches[0].clientX - rect.left;
+                    clientY = e.changedTouches[0].clientY - rect.top;
+                } else {
+                    return;
+                }
+            } else {
+                clientX = e.clientX - rect.left;
+                clientY = e.clientY - rect.top;
+            }
+            
+            let deltaX = clientX - centerX;
+            let deltaY = clientY - centerY;
+            
+            // Limit to circular boundary
+            const maxRadius = rect.width / 2 - 30;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+            if (distance > maxRadius) {
+                const angle = Math.atan2(deltaY, deltaX);
+                deltaX = Math.cos(angle) * maxRadius;
+                deltaY = Math.sin(angle) * maxRadius;
+            }
+            
+            // Update stick position
+            joystickStick.style.transform = `translate(calc(-50% + ${deltaX}px), calc(-50% + ${deltaY}px))`;
+            
+            // Calculate velocities
+            // Y-axis: forward/backward (negative = forward)
+            const linear = -deltaY / maxRadius * maxLinearSpeed;
+            // X-axis: left/right turning (positive = right)
+            const angular = -deltaX / maxRadius * maxAngularSpeed;
+            
+            // Publish velocity
+            publishVelocity(linear, angular);
+        }
+        
+        function startJoystick(e) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            joystickActive = true;
+            joystickStick.classList.add('active');
+            handleJoystickMove(e);
+        }
+        
+        function stopJoystick() {
+            joystickActive = false;
+            joystickStick.classList.remove('active');
+            joystickStick.style.transform = 'translate(-50%, -50%)';
+            publishVelocity(0, 0);
+        }
+        
+        // Control functions
+        function centerJoysticks() {
+            if (joystickStick) {
+                stopJoystick();
+            }
+        }
+        
+        function emergencyStop() {
+            centerJoysticks();
+            
+            // Execute docker-helper.sh stop
+            fetch('/api/command/stop')
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Emergency stop executed:', data);
+                    alert('Emergency Stop Activated!\nDocker containers stopped.');
+                })
+                .catch(error => {
+                    console.error('Emergency stop failed:', error);
+                    alert('Emergency Stop Activated!\nWarning: Failed to stop Docker containers.');
+                });
+        }
+        
+        // Initialize joystick controls after DOM is loaded
+        function initializeControls() {
+            // Get joystick elements
+            joystick = document.getElementById('joystick');
+            joystickStick = document.getElementById('joystick-stick');
+            speedSlider = document.getElementById('speed-slider');
+            
+            // Event listeners for joystick
+            joystick.addEventListener('mousedown', startJoystick);
+            joystick.addEventListener('touchstart', startJoystick, { passive: false });
+            
+            // Global move handlers
+            document.addEventListener('mousemove', handleJoystickMove);
+            document.addEventListener('touchmove', handleJoystickMove, { passive: false });
+            
+            // Global stop handlers
+            document.addEventListener('mouseup', () => {
+                if (joystickActive) stopJoystick();
+            });
+            document.addEventListener('touchend', (e) => {
+                if (joystickActive && e.touches.length === 0) stopJoystick();
+            });
+            
+            // Speed slider
+            speedSlider.addEventListener('input', function() {
+                const value = this.value;
+                speedMultiplier = value / 100;
+                document.getElementById('speed-display').textContent = value;
+                this.style.setProperty('--value', value + '%');
+            });
+            
+            console.log('Controls initialized successfully');
+        }
+        
+        // Initialize when DOM is ready
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initializeControls);
+        } else {
+            initializeControls();
+        }
+        
+        // Initialize ROS connection
+        connectROS();
+    </script>
+</body>
+</html>

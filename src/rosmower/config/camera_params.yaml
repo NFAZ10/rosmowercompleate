@@ -1,7 +1,7 @@
 # config/camera_params.yaml
 v4l2_camera:
   ros__parameters:
-    video_device: "/dev/video0"
+    video_device: "/dev/video1"
     image_size: [1280, 720]
     time_per_frame: [1, 30]
     # try "YUYV" if needed

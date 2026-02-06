@@ -1,0 +1,24 @@
+gps_node:
+  ros__parameters:
+    # Serial port configuration
+    # For Jetson Orin Nano - GPS HAT on GPIO UART
+    serial_port: '/dev/ttyTHS1'
+    
+    # LC29H default baud rate
+    baud_rate: 115200
+    
+    # Frame ID for TF
+    frame_id: 'gps'
+    
+    # Publishing rate in Hz
+    publish_rate: 10.0
+    
+    # Enable RTK mode (requires RTK-capable GPS module and base station)
+    use_rtk: false
+    
+    # NTRIP configuration for RTK corrections (Alternative Server)
+    ntrip_server: 'truertk.pointonenav.com'
+    ntrip_port: 2101
+    ntrip_mountpoint: 'POLARIS'
+    ntrip_username: 'z2urrj998w'
+    ntrip_password: 'kz9zmt9gkv'

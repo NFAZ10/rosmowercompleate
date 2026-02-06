@@ -24,7 +24,7 @@ find_package(std_srvs REQUIRED)
 
 # Install resources (your existing assets)
 install(
-  DIRECTORY config description launch worlds
+  DIRECTORY config description launch worlds web
   DESTINATION share/${PROJECT_NAME}
 )
 
@@ -39,6 +39,8 @@ install(PROGRAMS
   scripts/vl53_bridge.py
   scripts/tof_to_scan.py
   scripts/tof_guard.py
+  scripts/image_flip_node.py
+  scripts/mode_manager.py
   DESTINATION lib/${PROJECT_NAME}
 )
 

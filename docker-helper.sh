@@ -3,6 +3,16 @@
 # ROS Mower Docker Helper Script
 set -e
 
+# Detect docker compose command (v2 `docker compose` or legacy `docker-compose`)
+if docker compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker compose"
+elif docker-compose version >/dev/null 2>&1; then
+    COMPOSE_CMD="docker-compose"
+else
+    echo "Docker Compose not found. Install Docker Compose v2 (docker compose) or legacy docker-compose."
+    exit 1
+fi
+
 # Ensure Docker daemon is running
 if ! docker info >/dev/null 2>&1; then
     echo "Starting Docker daemon..."
@@ -26,28 +36,104 @@ case "$1" in
     "run")
         if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
             echo "Running ROS mower robot in detached mode..."
-            docker-compose up -d rosmower
+            $COMPOSE_CMD up -d rosmower
         else
             echo "Running ROS mower robot..."
-            docker-compose up rosmower
+            $COMPOSE_CMD up rosmower
         fi
         ;;
     "dev")
         if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
             echo "Starting development container in detached mode..."
-            docker-compose --profile dev run -d --rm dev bash
+            $COMPOSE_CMD --profile dev run -d --rm --name rosmower_dev_shell dev bash
         else
             echo "Starting development container..."
-            docker-compose --profile dev run --rm dev bash
+            $COMPOSE_CMD --profile dev run --rm --name rosmower_dev_shell dev bash
         fi
         ;;
     "rviz")
         if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
             echo "Starting RViz visualization in detached mode..."
-            docker-compose --profile gui up -d rviz
+            $COMPOSE_CMD --profile gui run -d --rm --name rosmower_rviz2 dev rviz2 -d /ws_dev/rviz_configs/test2.rviz
         else
             echo "Starting RViz visualization..."
-            docker-compose --profile gui up rviz
+            $COMPOSE_CMD --profile gui run --rm --name rosmower_rviz2 dev rviz2 -d /ws_dev/rviz_configs/test2.rviz
+        fi
+        ;;
+    "stat")
+        echo "Running status.py in Docker container..."
+        $COMPOSE_CMD --profile dev run --rm --name rosmower_status dev python3 /ws_dev/status.py --yaml /ws_dev/sources.yaml
+        ;;
+    "bridge")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Starting rosbridge and mode_manager in Docker container (detached)..."
+            $COMPOSE_CMD --profile dev run -d --rm --name rosmower_bridge dev bash -c "
+                ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
+                sleep 3
+                ros2 run rosmower mode_manager.py &
+                tail -f /dev/null
+            "
+        else
+            echo "Starting rosbridge and mode_manager in Docker container..."
+            $COMPOSE_CMD --profile dev run --rm --name rosmower_bridge dev bash -c "
+                ros2 launch rosbridge_server rosbridge_websocket_launch.xml &
+                ros2 run rosmower mode_manager.py &
+                wait
+            "
+        fi
+        ;;
+    "launch")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Running rosbridge in Docker container (detached)..."
+            $COMPOSE_CMD --profile dev run -d --rm --name rosmower_launch dev ros2 launch rosmower launch_robot.launch.py
+        else
+            echo "Running rosbridge in Docker container..."
+            $COMPOSE_CMD --profile dev run --rm --name rosmower_launch dev ros2 launch rosmower launch_robot.launch.py
+        fi
+        ;;
+    "launch-noarm")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Launching robot stack WITHOUT arming motors (detached)..."
+            $COMPOSE_CMD --profile dev run -d --rm --name rosmower_launch_noarm dev ros2 launch rosmower launch_robot.launch.py arm:=false
+        else
+            echo "Launching robot stack WITHOUT arming motors..."
+            $COMPOSE_CMD --profile dev run --rm --name rosmower_launch_noarm dev ros2 launch rosmower launch_robot.launch.py arm:=false
+        fi
+        ;;
+    "gps")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Launching GPS RTK in Docker container (detached)..."
+            $COMPOSE_CMD --profile dev run -d --rm --name rosmower_gps dev ros2 launch gps_rtk gps.launch.py
+        else
+            echo "Launching GPS RTK in Docker container..."
+            $COMPOSE_CMD --profile dev run --rm --name rosmower_gps dev ros2 launch gps_rtk gps.launch.py
+        fi
+        ;;
+    "rtk")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Launching GPS with RTK enabled in Docker container (detached)..."
+            $COMPOSE_CMD --profile dev run -d --rm --name rosmower_rtk dev ros2 launch gps_rtk gps.launch.py use_rtk:=true
+        else
+            echo "Launching GPS with RTK enabled in Docker container..."
+            $COMPOSE_CMD --profile dev run --rm --name rosmower_rtk dev ros2 launch gps_rtk gps.launch.py use_rtk:=true
+        fi
+        ;;
+    "rtk-alt")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Launching GPS with RTK enabled (alternate server) in Docker container (detached)..."
+            $COMPOSE_CMD --profile dev run -d --rm --name rosmower_rtk_alt dev ros2 launch gps_rtk gps.launch.py use_rtk:=true ntrip_profile:=alt
+        else
+            echo "Launching GPS with RTK enabled (alternate server) in Docker container..."
+            $COMPOSE_CMD --profile dev run --rm --name rosmower_rtk_alt dev ros2 launch gps_rtk gps.launch.py use_rtk:=true ntrip_profile:=alt
+        fi
+        ;;
+    "rqt")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Launching RQt in Docker container (detached)..."
+            $COMPOSE_CMD --profile gui run -d --rm --name rosmower_rqt dev rqt
+        else
+            echo "Launching RQt in Docker container..."
+            $COMPOSE_CMD --profile gui run --rm --name rosmower_rqt dev rqt
         fi
         ;;
     "shell")
@@ -59,17 +145,21 @@ case "$1" in
         docker logs rosmower_robot
         ;;
     "stop")
-        echo "Stopping all containers..."
-        docker-compose down
+        echo "Stopping all ROS mower containers..."
+        docker stop $(docker ps -q --filter "name=rosmower") 2>/dev/null || echo "No running rosmower containers found"
+        ;;
+    "stop-all")
+        echo "Stopping and removing all containers..."
+        $COMPOSE_CMD down
         ;;
     "clean")
         echo "Cleaning up containers and images..."
-        docker-compose down
+        $COMPOSE_CMD down
         docker rmi rosmower:latest 2>/dev/null || true
         ;;
     "start")
         echo "Starting development container with Terminator terminal..."
-        docker-compose --profile dev run --rm dev terminator
+        $COMPOSE_CMD --profile dev run --rm --name rosmower_terminator dev terminator
         ;;
     "status")
         echo "Docker status:"
@@ -90,9 +180,18 @@ case "$1" in
         echo "  run [-d|--detached] - Run the robot stack (optional: detached mode)"
         echo "  dev [-d|--detached] - Start development container (optional: detached mode)"
         echo "  rviz [-d|--detached] - Start RViz visualization (optional: detached mode)"
+        echo "  stat    - Run status.py with sources.yaml in Docker container"
+        echo "  bridge [-d|--detached] - Launch rosbridge websocket (optional: detached mode)"
+        echo "  launch [-d|--detached] - Launch robot stack (optional: detached mode)"
+        echo "  launch-noarm [-d|--detached] - Launch robot stack WITHOUT arming motors"
+        echo "  gps [-d|--detached] - Launch GPS RTK (optional: detached mode)"
+        echo "  rtk [-d|--detached] - Launch GPS with RTK enabled (default server)"
+        echo "  rtk-alt [-d|--detached] - Launch GPS with RTK enabled (alternate server)"
+        echo "  rqt [-d|--detached] - Launch RQt GUI tools (optional: detached mode)"
         echo "  shell   - Open shell in running container"
         echo "  logs    - Show container logs"
-        echo "  stop    - Stop all containers"
+        echo "  stop    - Stop all ROS mower containers (keeps containers)"
+        echo "  stop-all - Stop and remove all containers"
         echo "  clean   - Clean up containers and images"
         echo "  status  - Show Docker status"
         echo ""

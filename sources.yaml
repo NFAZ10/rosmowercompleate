@@ -6,12 +6,13 @@
     - {label: Pct,     path: percentage, fmt: "{:.0%}"}
     - {label: Current, path: current, fmt: "{:.2f} Ah"}
 - name: GPS
-  topic: /fix
+  topic: /gps/fix
   type: sensor_msgs/msg/NavSatFix
   fields:
     - {label: Lat, path: latitude,  fmt: "{:.6f}"}
     - {label: Lon, path: longitude, fmt: "{:.6f}"}
     - {label: Alt, path: altitude,  fmt: "{:.2f} m"}
+    - {label: Status, path: status.status, fmt: "{}"}
 
 - name: IMU
   topic: /imu

@@ -29,7 +29,7 @@ class BatterySplitter(Node):
 
         # QoS similar to sensor data, reliable if available
         qos = QoSProfile(
-            reliability=ReliabilityPolicy.RELIABLE,
+            reliability=ReliabilityPolicy.BEST_EFFORT,
             durability=DurabilityPolicy.VOLATILE,
             history=HistoryPolicy.KEEP_LAST,
             depth=10

@@ -16,13 +16,14 @@ from launch_ros.actions import Node
 from launch.conditions import IfCondition, UnlessCondition
 
 # Full device path for hoverboard Arduino
-BY_ID = '/dev/serial/by-path/platform-fd500000.pcie-pci-0000:01:00.0-usb-0:1.3:1.0-port0'
+BY_ID = '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0'
 
 # RPLIDAR device path
 RPLIDAR_BY_ID = "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
 
 # Default FCU path for MAVROS (override at launch with: `ros2 launch ... dev:=/dev/ttyACM0`)
 DEFAULT_FCU = '/dev/ttyACM0'
+
 
 def generate_launch_description():
     # --- Battery Splitter Node ---
@@ -47,13 +48,26 @@ def generate_launch_description():
         namespace='camera',
         output='screen',
         parameters=[{
-            'video_device': '/dev/video0',
+            'video_device': '/dev/video1',
             'image_size': [640, 480],
             'time_per_frame': [1, 30],
             'pixel_format': 'YUYV',
             'output_encoding': 'bgr8',
             'camera_frame_id': 'camera_link_optical'
-        }]
+        }],
+        remappings=[
+            ('image_raw', 'image_raw_unflipped'),
+            ('camera_info', 'camera_info_unflipped')
+        ]
+    )
+
+    # --- Image Flip Node to rotate camera 180 degrees ---
+    image_flip_node = Node(
+        package='rosmower',
+        executable='image_flip_node.py',
+        name='image_flip',
+        namespace='camera',
+        output='screen'
     )
 
     # --- Image Transport Republish Node (compressed topic) ---
@@ -64,8 +78,8 @@ def generate_launch_description():
         output='screen',
         arguments=['raw', 'compressed'],
         remappings=[
-            ('in', '/camera/image_raw'),
-            ('out', '/camera/image_raw/compressed')
+            ('in', '/camera/image_raw/flipped'),
+            ('out/compressed', '/camera/image_compressed')
         ]
     )
     pkg = get_package_share_directory('rosmower')
@@ -96,15 +110,7 @@ def generate_launch_description():
     )
 
     # --- Joint State Publisher (only when NOT using ros2_control) ---
-    # CLI sliders:
-    jsp_gui = Node(
-        package='joint_state_publisher_gui',
-        executable='joint_state_publisher_gui',
-        name='joint_state_publisher_gui',
-        output='log',
-        arguments=['--ros-args', '--log-level', 'warn'],
-        condition=IfCondition(use_joint_state_gui)
-    )
+
     # Headless publisher:
     jsp = Node(
         package='joint_state_publisher',
@@ -116,7 +122,7 @@ def generate_launch_description():
     )
     # Run either GUI or headless, but only if ros2_control is disabled
     jsp_group = GroupAction(
-        actions=[jsp_gui, jsp],
+        actions=[jsp],
         condition=UnlessCondition(use_ros2_control)
     )
 
@@ -156,11 +162,12 @@ def generate_launch_description():
             'max_ang': 2.0,
             'stat_period': 0.5,
             'arm_on_start': True,
+            'wheel_radius': 0.4364,
+            'wheel_separation': 0.52,
         }],
         condition=IfCondition(arm)
     )
     hoverboard_group = GroupAction(actions=[hoverboard], condition=UnlessCondition(use_ros2_control))
-    delayed_hoverboard = TimerAction(period=3.0, actions=[hoverboard_group])
 
     # --- IMU Bridge Node ---
     imu_bridge =  Node(
@@ -187,6 +194,17 @@ def generate_launch_description():
         remappings=[('/odometry/filtered', '/odom')],
     )
 
+    # --- Mode Manager Node ---
+    mode_manager_node = Node(
+        package='rosmower',
+        executable='mode_manager.py',
+        name='mode_manager',
+        output='screen',
+        parameters=[{
+            'initial_mode': 'full'
+        }]
+    )
+    
     # --- Optional: rosbridge websocket ---
     rosbridge_node = Node(
         package='rosbridge_server',
@@ -227,20 +245,7 @@ def generate_launch_description():
             'angle_compensate': True,
         }],
     )
-    # --- Laser Scan Filter Chain ---
-    laser_filter_params = os.path.join(pkg, 'config', 'laser_filter.yaml')
-    laser_filter = Node(
-        package='laser_filters',
-        executable='scan_to_scan_filter_chain',
-        name='laser_filter',
-        output='log',
-        arguments=['--ros-args', '--log-level', 'warn'],
-        parameters=[laser_filter_params],
-        remappings=[
-        ('scan', '/scan'),                 # input from rplidar_node
-        ('scan_filtered', '/scan_filtered')# output to SLAM / consumers
-        ],
-    )
+
 
     relay = Node(
         package='rosmower',              # replace with your package
@@ -292,9 +297,9 @@ def generate_launch_description():
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('use_ros2_control', default_value='false'),
         DeclareLaunchArgument('use_twist_mux', default_value='false'),
-        DeclareLaunchArgument('use_rosbridge', default_value='true'),
         DeclareLaunchArgument('use_mavros', default_value='true'),
-        DeclareLaunchArgument('use_joint_state_gui', default_value='true',
+
+        DeclareLaunchArgument('use_joint_state_gui', default_value='false',
                               description='Use joint_state_publisher_gui sliders'),
         DeclareLaunchArgument('dev', default_value=DEFAULT_FCU),
         DeclareLaunchArgument('arm', default_value='true', description='Enable motor arming if true'),
@@ -302,20 +307,21 @@ def generate_launch_description():
         quiet_env,
         rsp,
         relay,
+        mode_manager_node,    # Mode manager for runtime mode switching
         jsp_group,            # <-- NEW: joint state publisher (headless or GUI)
         #twist_mux_to_controller,
         #twist_mux_to_bridge,
-        delayed_hoverboard,
+        hoverboard_group,
         imu_bridge,
         ekf_node,
-        rplidar_node,
-        laser_filter,   
-        rosbridge_node,
-        tof,
+        #rplidar_node, 
+        #tof,
         camera_node,
+        image_flip_node,
         image_transport_node,
         battery_splitter_node,
         mavros_node,
 
         
     ])
+

@@ -51,4 +51,4 @@ Thumbs.db
 # Custom build directories (keep source)
 src/*/build/
 src/*/install/
-src/*/log/
+src/*/log/QGroundControl-x86_64.AppImage

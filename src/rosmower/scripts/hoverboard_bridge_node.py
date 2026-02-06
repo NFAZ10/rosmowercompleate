@@ -4,7 +4,7 @@ from math import copysign
 import rclpy
 from rclpy.node import Node
 from geometry_msgs.msg import Twist
-from std_msgs.msg import Int16, String
+from std_msgs.msg import Int16, String, Bool
 from std_srvs.srv import Trigger, SetBool
 
 # NEW:
@@ -26,7 +26,7 @@ class HoverboardBridge(Node):
         super().__init__('hoverboard_bridge')
 
         # ---------- Parameters ----------
-        self.declare_parameter('port', '/dev/ttyUSB0')
+        self.declare_parameter('port', '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0')
         self.declare_parameter('baud', 115200)
         self.declare_parameter('wait_after_open', 2.0)
         self.declare_parameter('reset_dtr', True)
@@ -39,7 +39,7 @@ class HoverboardBridge(Node):
         self.declare_parameter('arm_on_start', True)
 
         # NEW: kinematics + publishing
-        self.declare_parameter('wheel_radius', 0.16)       # meters (set yours)
+        self.declare_parameter('wheel_radius', 0.4364)     # meters (108" circumference, calibrated)
         self.declare_parameter('wheel_separation', 0.52)   # meters (set yours)
         self.declare_parameter('ticks_per_rev', 0)         # >0 enables encoder mode if ENC lines are parsed
         self.declare_parameter('joint_state_rate', 50.0)   # Hz
@@ -88,6 +88,10 @@ class HoverboardBridge(Node):
             raise
 
         # ---------- Pub/Sub ----------
+        # Mode control
+        self.motors_enabled = True  # Default enabled
+        self.create_subscription(Bool, '/enable_motors', self.on_enable_motors, 10)
+        
         # Keep your topics/services
         self.create_subscription(Twist, 'cmd_vel', self.on_cmd_vel, 10)
         self.create_subscription(Int16, 'blade_pwm', self.on_blade_pwm, 10)
@@ -178,7 +182,21 @@ class HoverboardBridge(Node):
                 time.sleep(0.05)
 
     # ---------------- ROS callbacks ----------------
+    def on_enable_motors(self, msg: Bool):
+        """Enable or disable motor control"""
+        self.motors_enabled = msg.data
+        if not self.motors_enabled:
+            # Stop motors when disabled
+            self.send_line('VEL 0 0')
+            self.get_logger().info('Motors DISABLED')
+        else:
+            self.get_logger().info('Motors ENABLED')
+    
     def on_cmd_vel(self, msg: Twist):
+        # Check if motors are enabled
+        if not self.motors_enabled:
+            return  # Ignore velocity commands when disabled
+        
         # Maintain your PWM output protocol
         max_pwm = int(self.get_parameter('max_pwm').get_parameter_value().integer_value)
         max_lin = float(self.get_parameter('max_lin').get_parameter_value().double_value)

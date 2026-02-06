@@ -26,7 +26,23 @@ services:
     # Device mappings for specific hardware
     devices:
       - /dev/ttyACM0:/dev/ttyACM0  # MAVROS FCU
-      - /dev/ttyUSB0:/dev/ttyUSB0  # Backup for serial devices
+      - /dev/ttyUSB0:/dev/ttyUSB0  # Backup for serial device
+      - /dev/ttyUSB1:/dev/ttyUSB1
+      - /dev/ttyTHS1:/dev/ttyTHS1  # RTK GPS rover
+
+      - /dev/i2c-7:/dev/i2c-1      # IMU
+      - /dev/video0:/dev/video0    # Camera 0 (CSI or USB)
+      - /dev/video1:/dev/video1    # Camera 1 (CSI or USB)
+      - /dev/video2:/dev/video2    # Camera 2 (if exists)
+      - /dev/video3:/dev/video3    # Camera 3 (if exists)
+      - /dev/media0:/dev/media0    # Media device for CSI cameras
+      - /dev/media1:/dev/media1    # Media device for USB cameras
+      - /dev/ttyAMA0:/dev/ttyAMA0  # GPIO UART for GPS
+    # USB device access for USB cameras/peripherals
+    volumes_from: []
+    cap_add:
+      - SYS_ADMIN
+      - SYS_RESOURCE
     command: >
       bash -c "
       source /opt/ros/humble/setup.bash &&
@@ -75,11 +91,26 @@ services:
       - /dev:/dev
       - /run/udev:/run/udev:ro
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Mount NVIDIA Jetson libraries for camera access
+      - /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra:ro
+      - /usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:ro
+      # Mount GitHub CLI credentials if they exist
+      - ${HOME}/.config/gh:/root/.config/gh:ro
     environment:
       - ROS_DOMAIN_ID=0
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
+      - LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
+      - GST_PLUGIN_PATH=/usr/lib/aarch64-linux-gnu/gstreamer-1.0
+      - BASH_ENV=/root/.bashrc
+    devices:
+      - /dev/video0:/dev/video0
+      - /dev/video1:/dev/video1
+      - /dev/video2:/dev/video2
+      - /dev/video3:/dev/video3
+      - /dev/ttyAMA0:/dev/ttyAMA0
+      - /dev/ttyTHS1:/dev/ttyTHS1  # RTK GPS rover
     working_dir: /ws_dev
     command: bash
     profiles:

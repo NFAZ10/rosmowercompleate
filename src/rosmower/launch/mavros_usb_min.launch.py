@@ -4,7 +4,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 # Default by-id path (replace with your actual device if needed)
-DEFAULT_FCU = "/dev/ttyACM0"
+DEFAULT_FCU = '/dev/ttyACM0'
 
 
 def generate_launch_description():

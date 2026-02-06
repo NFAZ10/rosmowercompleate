@@ -3,7 +3,7 @@
 # Set IMAGE_TYPE to 'ros-core' for minimal or 'desktop' for full desktop
 ARG IMAGE_TYPE=desktop
 ARG ROS_DISTRO=humble
-FROM osrf/ros:${ROS_DISTRO}-${IMAGE_TYPE} AS base
+FROM ros:${ROS_DISTRO} AS base
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -11,8 +11,10 @@ ENV ROS_DISTRO=humble
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-# Install system dependencies
+# Install ROS desktop tools and system dependencies
 RUN apt-get update && apt-get install -y \
+    ros-${ROS_DISTRO}-desktop \
+    ros-${ROS_DISTRO}-rqt* \
     python3-pip \
     python3-colcon-common-extensions \
     python3-rosdep \
@@ -30,10 +32,26 @@ RUN apt-get update && apt-get install -y \
     python3-requests \
     python3-scipy \
     python3-numpy \
-    terminator\
+    terminator \
     udev \
-    nano\
+    nano \
     && rm -rf /var/lib/apt/lists/*
+
+# Install GitHub CLI and Copilot CLI
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && apt-get update \
+    && apt-get install -y gh \
+    && rm -rf /var/lib/apt/lists/*
+    # && gh extension install github/gh-copilot  # Commented out - requires auth
+
+# Install Python packages via pip
+RUN pip3 install \
+    smbus2 \
+    pyserial \
+    pynmea2
+
 
 # Install additional ROS 2 packages that might be needed
 RUN apt-get update && apt-get install -y \
@@ -61,6 +79,7 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
     ros-${ROS_DISTRO}-nav2* \
     ros-${ROS_DISTRO}-slam-toolbox \
+    ros-${ROS_DISTRO}-nmea-navsat-driver \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GeographicLib datasets for MAVROS

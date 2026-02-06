@@ -1,9 +1,8 @@
-# Multi-stage Docker build for ROS 2 rosmower workspace (ARM64 version)
-# Use base ROS 2 image that supports ARM64
-# Set IMAGE_TYPE to 'ros-core' for minimal or 'desktop' for full desktop
+#Multi-stage Docker build for ROS 2 rosmower workspace (ARM64 version)
+# Use ARM64-specific ROS 2 image
 ARG IMAGE_TYPE=desktop
 ARG ROS_DISTRO=humble
-FROM ros:${ROS_DISTRO}-${IMAGE_TYPE} AS base
+FROM ros:${ROS_DISTRO} AS base
 
 # Set environment variables
 ENV DEBIAN_FRONTEND=noninteractive
@@ -11,8 +10,10 @@ ENV ROS_DISTRO=humble
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 
-# Install system dependencies
+# Install ROS desktop tools and system dependencies
 RUN apt-get update && apt-get install -y \
+    ros-${ROS_DISTRO}-desktop \
+    ros-${ROS_DISTRO}-rqt* \
     python3-pip \
     python3-colcon-common-extensions \
     python3-rosdep \
@@ -30,8 +31,9 @@ RUN apt-get update && apt-get install -y \
     python3-requests \
     python3-scipy \
     python3-numpy \
+    minicom\
     udev \
-    nano\
+    nano \
     && rm -rf /var/lib/apt/lists/*
 
 # Install additional ROS 2 packages that might be needed
@@ -62,7 +64,27 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-compressed-image-transport \
     ros-${ROS_DISTRO}-v4l2-camera \
     ros-${ROS_DISTRO}-laser-filters \
+    ros-${ROS_DISTRO}-cv-bridge \
+    ros-${ROS_DISTRO}-image-transport \
+    ros-${ROS_DISTRO}-camera-info-manager \
+    ros-${ROS_DISTRO}-v4l2-camera \
+    ros-${ROS_DISTRO}-nmea-navsat-driver \
+    ros-${ROS_DISTRO}-web-video-server \
+    && rm -rf /var/lib/apt/lists/*
 
+# Install NVIDIA Jetson multimedia libraries and GStreamer plugins
+# These are required for CSI camera access with nvarguscamerasrc
+RUN apt-get update && apt-get install -y \
+    nvidia-l4t-gstreamer \
+    nvidia-l4t-multimedia \
+    nvidia-l4t-multimedia-utils \
+    gstreamer1.0-tools \
+    gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad \
+    v4l-utils \
+    python3-opencv \
+    libopencv-dev \
+    || echo "Note: NVIDIA packages may not be available in all base images" \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GeographicLib datasets for MAVROS
@@ -81,6 +103,12 @@ COPY sources.yaml ./
 RUN rosdep init || true
 RUN rosdep update
 RUN rosdep install --from-paths src --ignore-src -r -y --skip-keys="hailo_msgs" || echo "Some dependencies could not be resolved, continuing..."
+
+# Install Python packages via pip
+RUN pip3 install \
+    smbus2 \
+    pyserial \
+    pynmea2
 
 # Build the workspace
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \

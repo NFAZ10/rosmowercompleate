@@ -40,11 +40,26 @@ def _build_camera_node(context, *args, **kwargs):
         ]
     )
 
-    return [v4l2, static_tf]
+
+
+
+    image_transport_node = Node(
+        package='image_transport',
+        executable='republish',
+        name='image_republish',
+        output='screen',
+        arguments=['raw', 'compressed'],
+        remappings=[
+            ('in', '/camera/image_raw'),
+            ('out', '/camera/image_raw/compressed')
+        ]
+    )
+
+    return [v4l2, static_tf, image_transport_node]
 
 
 def generate_launch_description():
-    dev_arg = DeclareLaunchArgument('video_device', default_value='/dev/video0')
+    dev_arg = DeclareLaunchArgument('video_device', default_value='/dev/video1')
     # Use device-native safe defaults to avoid MJPG decode problems
     widthArg = DeclareLaunchArgument('width', default_value='640')
     heightArg = DeclareLaunchArgument('height', default_value='480')

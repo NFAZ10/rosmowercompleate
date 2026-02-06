@@ -1,0 +1,20 @@
+/**:
+  ros__parameters:
+    # I2C Configuration
+    i2c_bus: 1
+    i2c_address: 0x68  # Default ICM20948 address
+    
+    # Frame ID
+    frame_id: "imu_link"
+    
+    # Publishing rate (Hz)
+    publish_rate: 100.0
+    
+    # Optional data publishing
+    publish_temperature: true
+    publish_magnetometer: true
+    
+    # Sensor ranges (informational)
+    # Accelerometer: ±2g
+    # Gyroscope: ±250°/s
+    # Magnetometer: ±4900µT

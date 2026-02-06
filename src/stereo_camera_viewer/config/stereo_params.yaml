@@ -1,0 +1,46 @@
+stereo_camera_node:
+  ros__parameters:
+    # Camera IDs (CSI camera IDs for Jetson, or /dev/video* indices)
+    # For CSI cameras on Jetson: 0 and 1
+    # For USB cameras: typically /dev/video0 -> 0, /dev/video1 -> 1
+    left_camera_id: 0
+    right_camera_id: 1
+    
+    # Resolution
+    # Common resolutions:
+    # - 640x480 (VGA)
+    # - 1280x720 (720p)
+    # - 1920x1080 (1080p)
+    # - 3280x2464 (IMX219 max)
+    width: 1280
+    height: 720
+    
+    # Frame rate (Hz)
+    fps: 30
+    
+    # TF frame ID
+    frame_id: 'stereo_camera'
+    
+    # Use GStreamer for hardware acceleration (Jetson CSI cameras)
+    # Set to false for USB cameras
+    use_gstreamer: true
+    
+    # Flip method for CSI cameras
+    # 0: none
+    # 1: counterclockwise
+    # 2: rotate-180
+    # 3: clockwise
+    # 4: horizontal-flip
+    # 5: upper-right-diagonal
+    # 6: vertical-flip
+    # 7: upper-left-diagonal
+    flip_method: 0
+
+simple_viewer:
+  ros__parameters:
+    # Show FPS overlay on images
+    show_fps: true
+    
+    # Display window size
+    window_width: 640
+    window_height: 480
