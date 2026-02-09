@@ -237,12 +237,14 @@ def generate_launch_description():
         executable='sllidar_node',
         name='rplidar',
         output='log',
-        arguments=['--ros-args', '--log-level', 'warn'],
+        arguments=['--ros-args', '--log-level', 'info'],
         parameters=[{
             'serial_port': RPLIDAR_BY_ID,
             'serial_baudrate': 115200,
             'frame_id': 'laser_frame',
             'angle_compensate': True,
+            'inverted': False,
+            'auto_standby': True,
         }],
     )
 
@@ -314,7 +316,7 @@ def generate_launch_description():
         hoverboard_group,
         imu_bridge,
         ekf_node,
-        #rplidar_node, 
+        rplidar_node, 
         #tof,
         camera_node,
         image_flip_node,

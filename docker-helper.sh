@@ -136,6 +136,11 @@ case "$1" in
             $COMPOSE_CMD --profile gui run --rm --name rosmower_rqt dev rqt
         fi
         ;;
+    "teleop")
+        echo "Launching teleop keyboard controller in Docker container..."
+        echo "Use arrow keys to control the robot (i/k for forward/back, j/l for left/right)"
+        $COMPOSE_CMD --profile dev run --rm --name rosmower_teleop dev ros2 run teleop_twist_keyboard teleop_twist_keyboard
+        ;;
     "shell")
         echo "Opening shell in running container..."
         docker exec -it rosmower_robot bash
@@ -188,6 +193,7 @@ case "$1" in
         echo "  rtk [-d|--detached] - Launch GPS with RTK enabled (default server)"
         echo "  rtk-alt [-d|--detached] - Launch GPS with RTK enabled (alternate server)"
         echo "  rqt [-d|--detached] - Launch RQt GUI tools (optional: detached mode)"
+        echo "  teleop  - Launch teleop keyboard controller"
         echo "  shell   - Open shell in running container"
         echo "  logs    - Show container logs"
         echo "  stop    - Stop all ROS mower containers (keeps containers)"

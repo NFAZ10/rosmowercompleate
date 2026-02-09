@@ -47,6 +47,21 @@
             gap: 15px;
         }
         
+        .lidar-indicator {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #666;
+            display: inline-block;
+            margin-right: 3px;
+        }
+        
+        .lidar-indicator.active {
+            background: #4CAF50;
+            box-shadow: 0 0 8px #4CAF50;
+            animation: pulse 2s infinite;
+        }
+        
         .status-bar-center {
             font-size: 0.9em;
             font-weight: 500;
@@ -434,6 +449,10 @@
                 <span class="gps-icon">📡</span>
                 <span class="gps-quality" id="gps-quality">No GPS</span>
             </div>
+            <div class="status-item" id="lidar-status">
+                <span class="lidar-indicator" id="lidar-indicator"></span>
+                <span>🔵 LiDAR</span>
+            </div>
         </div>
         <div class="status-bar-center">
             <span id="time-display">--:--</span>
@@ -453,7 +472,7 @@
         <h1>🤖 ROS Mower</h1>
         
         <div class="connection-form">
-            <input type="text" id="rosbridge-url" placeholder="ws://10.31.18.195:9090" value="ws://10.31.18.195:9090">
+            <input type="text" id="rosbridge-url" placeholder="ws://10.0.212.198:9090" value="ws://10.0.212.198:9090">
             <button onclick="connectToROS()">Connect</button>
         </div>
         
@@ -501,17 +520,11 @@
                 <button class="control-btn btn-launch" onclick="executeCommand('launch')">
                     🚀 Launch
                 </button>
-                <button class="control-btn btn-stat" onclick="executeCommand('stat')">
-                    📊 Status
-                </button>
                 <button class="control-btn btn-gps" onclick="executeCommand('gps')">
                     🛰️ GPS
                 </button>
                 <button class="control-btn btn-bridge" onclick="executeCommand('bridge')">
                     🌉 Bridge
-                </button>
-                <button class="control-btn btn-rqt" onclick="executeCommand('rqt')">
-                    📊 RQt
                 </button>
                 <button class="control-btn btn-cleanup" onclick="executeCommand('cleanup')" style="background: linear-gradient(135deg, #ff9800 0%, #ff5722 100%);">
                     🧹 Cleanup
@@ -524,6 +537,16 @@
                 </button>
                 <button class="control-btn btn-node-status" onclick="window.open('/status', '_blank')">
                     🤖 Node Status
+                </button>
+            </div>
+            
+            <h3 style="margin-top: 25px;">🔵 LiDAR Motor Control</h3>
+            <div class="control-buttons">
+                <button class="control-btn" onclick="startLidarMotor()" style="background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);">
+                    ▶️ Start Motor
+                </button>
+                <button class="control-btn" onclick="stopLidarMotor()" style="background: linear-gradient(135deg, #f44336 0%, #d32f2f 100%);">
+                    ⏹️ Stop Motor
                 </button>
             </div>
             
@@ -550,7 +573,9 @@
         let modeStatusTopic = null;
         let batteryTopic = null;
         let gpsStatusTopic = null;
+        let lidarTopic = null;
         let currentMode = 'unknown';
+        let lastLidarTime = 0;
         const API_BASE = window.location.origin;
 
         // Check system status periodically
@@ -789,11 +814,12 @@
             // Subscribe to battery status
             batteryTopic = new ROSLIB.Topic({
                 ros: ros,
-                name: '/battery_state',
+                name: '/mavros/battery',
                 messageType: 'sensor_msgs/BatteryState'
             });
             
             batteryTopic.subscribe(function(message) {
+                console.log('Battery message received:', message);
                 const percentage = message.percentage * 100;
                 updateBatteryDisplay(percentage, message.voltage);
             });
@@ -806,11 +832,43 @@
             });
             
             gpsStatusTopic.subscribe(function(message) {
+                console.log('GPS message received:', message);
                 // NavSatFix status: -1=no fix, 0=fix, 1=sbas, 2=gbas
                 // quality from position_covariance_type: 0=unknown, 1=approximated, 2=diagonal, 3=known
                 const quality = message.status ? message.status.status : 0;
                 updateGPSDisplay('', quality);
             });
+            
+            // Subscribe to LiDAR scan
+            lidarTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/scan',
+                messageType: 'sensor_msgs/LaserScan'
+            });
+            
+            lidarTopic.subscribe(function(message) {
+                lastLidarTime = Date.now();
+                updateLidarDisplay(true);
+            });
+            
+            // Check LiDAR timeout every 2 seconds
+            setInterval(checkLidarTimeout, 2000);
+        }
+        
+        function checkLidarTimeout() {
+            const timeout = 3000; // 3 seconds
+            if (lastLidarTime > 0 && (Date.now() - lastLidarTime) > timeout) {
+                updateLidarDisplay(false);
+            }
+        }
+        
+        function updateLidarDisplay(active) {
+            const indicator = document.getElementById('lidar-indicator');
+            if (active) {
+                indicator.classList.add('active');
+            } else {
+                indicator.classList.remove('active');
+            }
         }
 
         function updateConnectionStatus(connected) {
@@ -852,6 +910,52 @@
 
             modeCommandTopic.publish(modeMessage);
             console.log('Mode set to: ' + mode);
+        }
+
+        function startLidarMotor() {
+            if (!ros || !ros.isConnected) {
+                alert('Not connected to ROS! Please connect first.');
+                return;
+            }
+
+            const startMotorService = new ROSLIB.Service({
+                ros: ros,
+                name: '/start_motor',
+                serviceType: 'std_srvs/srv/Empty'
+            });
+
+            const request = new ROSLIB.ServiceRequest({});
+
+            startMotorService.callService(request, function(result) {
+                console.log('LiDAR motor started');
+                addLog('✅ LiDAR motor started');
+            }, function(error) {
+                console.error('Failed to start LiDAR motor:', error);
+                addLog('❌ Failed to start LiDAR motor: ' + error);
+            });
+        }
+
+        function stopLidarMotor() {
+            if (!ros || !ros.isConnected) {
+                alert('Not connected to ROS! Please connect first.');
+                return;
+            }
+
+            const stopMotorService = new ROSLIB.Service({
+                ros: ros,
+                name: '/stop_motor',
+                serviceType: 'std_srvs/srv/Empty'
+            });
+
+            const request = new ROSLIB.ServiceRequest({});
+
+            stopMotorService.callService(request, function(result) {
+                console.log('LiDAR motor stopped');
+                addLog('✅ LiDAR motor stopped');
+            }, function(error) {
+                console.error('Failed to stop LiDAR motor:', error);
+                addLog('❌ Failed to stop LiDAR motor: ' + error);
+            });
         }
 
         window.onload = function() {

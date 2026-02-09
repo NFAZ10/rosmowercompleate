@@ -107,6 +107,31 @@ def compute_field(key: str, msg: Any):
         a = getattr(msg, "linear_acceleration", None)
         if a is None: return None
         return math.sqrt(a.x*a.x + a.y*a.y + a.z*a.z)
+    if key == "gps_accuracy":
+        # Compute horizontal accuracy from position covariance
+        cov = getattr(msg, "position_covariance", None)
+        if cov is None or len(cov) < 5: return None
+        # Horizontal accuracy is sqrt of average of x and y variances
+        h_accuracy = math.sqrt((cov[0] + cov[4]) / 2.0)
+        return h_accuracy
+    if key == "rtk_status":
+        # Decode GPS fix status into human-readable RTK status
+        # Based on NavSatStatus constants and GPS quality mapping
+        status = getattr(msg, "status", None)
+        if status is None: return None
+        status_code = getattr(status, "status", -1)
+        # Map status codes to RTK-aware descriptions
+        # STATUS_NO_FIX = -1, STATUS_FIX = 0, STATUS_SBAS_FIX = 1, STATUS_GBAS_FIX = 2
+        if status_code == -1:
+            return "No Fix"
+        elif status_code == 0:
+            return "GPS Fix"
+        elif status_code == 1:
+            return "DGPS/SBAS"
+        elif status_code == 2:
+            return "RTK Fix"
+        else:
+            return f"Unknown ({status_code})"
     return None
 
 @dataclass
@@ -214,6 +239,38 @@ def default_sources() -> List[SourceSpec]:
                 FieldSpec("Current", "data", "{}"),
             ],
         ),
+        SourceSpec(
+            name="Battery",
+            topic="/battery_state",
+            type_str="sensor_msgs/msg/BatteryState",
+            fields=[
+                FieldSpec("Voltage", "voltage", "{:.2f} V"),
+                FieldSpec("Percentage", "percentage", "{:.1f} %"),
+                FieldSpec("Current", "current", "{:.2f} A"),
+            ],
+        ),
+        SourceSpec(
+            name="GPS/RTK",
+            topic="/gps/fix",
+            type_str="sensor_msgs/msg/NavSatFix",
+            fields=[
+                FieldSpec("Latitude", "latitude", "{:.7f}"),
+                FieldSpec("Longitude", "longitude", "{:.7f}"),
+                FieldSpec("Altitude", "altitude", "{:.2f} m"),
+                FieldSpec("RTK Status", computed="rtk_status"),
+                FieldSpec("Accuracy", computed="gps_accuracy", fmt="{:.2f} m"),
+            ],
+        ),
+        SourceSpec(
+            name="IMU (MAVROS)",
+            topic="/mavros/imu/data",
+            type_str="sensor_msgs/msg/Imu",
+            fields=[
+                FieldSpec("Orientation", computed="rpy_deg"),
+                FieldSpec("Angular Vel", computed="ang_vel_norm", fmt="{:.3f} rad/s"),
+                FieldSpec("Linear Accel", computed="lin_acc_norm", fmt="{:.2f} m/s²"),
+            ],
+        ),
 
     ]
 
@@ -281,36 +338,62 @@ def human_panel(name: str, age: Optional[float], lines: List[Tuple[str,str]]) ->
         out.append(f"  {k:<10} {v}")
     return "\n".join(out)
 
-def format_table(rows: List[List[str]], headers: List[str]) -> str:
-    """Format data as ASCII table"""
-    if not rows:
-        return ""
-    
-    # Calculate column widths
-    col_widths = [len(h) for h in headers]
-    for row in rows:
-        for i, cell in enumerate(row):
-            if i < len(col_widths):
-                col_widths[i] = max(col_widths[i], len(str(cell)))
-    
-    # Build table
+# ANSI color codes
+class Colors:
+    RESET = "\033[0m"
+    RED = "\033[91m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    CYAN = "\033[96m"
+    BOLD = "\033[1m"
+    DIM = "\033[2m"
+
+def colorize_battery_voltage(voltage_str: str) -> str:
+    """Color code battery voltage: green if >= 26.5V, red otherwise"""
+    try:
+        # Extract numeric value from string like "26.50 V"
+        voltage = float(voltage_str.split()[0])
+        if voltage >= 26.5:
+            return f"{Colors.GREEN}{voltage_str}{Colors.RESET}"
+        else:
+            return f"{Colors.RED}{voltage_str}{Colors.RESET}"
+    except (ValueError, IndexError):
+        return voltage_str
+
+def format_box(title: str, rows: List[Tuple[str, str]], age: Optional[float], width: int = 60) -> str:
+    """Format data as a colored box with title and fields"""
     lines = []
-    # Header
-    header_row = "│ " + " │ ".join(h.ljust(col_widths[i]) for i, h in enumerate(headers)) + " │"
-    separator = "├─" + "─┼─".join("─" * w for w in col_widths) + "─┤"
-    top_border = "┌─" + "─┬─".join("─" * w for w in col_widths) + "─┐"
-    bottom_border = "└─" + "─┴─".join("─" * w for w in col_widths) + "─┘"
     
-    lines.append(top_border)
-    lines.append(header_row)
-    lines.append(separator)
+    # Title bar with age
+    age_text = age_str(age) if age is not None else "no data"
+    title_text = f" {title} "
+    age_display = f" ({age_text}) "
+    padding = width - len(title_text) - len(age_display) - 2
+    
+    lines.append(f"┌{'─' * (width - 2)}┐")
+    lines.append(f"│{Colors.CYAN}{Colors.BOLD}{title_text}{Colors.RESET}{' ' * padding}{Colors.DIM}{age_display}{Colors.RESET}│")
+    lines.append(f"├{'─' * (width - 2)}┤")
     
     # Data rows
-    for row in rows:
-        row_str = "│ " + " │ ".join(str(cell).ljust(col_widths[i]) for i, cell in enumerate(row)) + " │"
-        lines.append(row_str)
+    if not rows:
+        lines.append(f"│{Colors.DIM}  No data available{' ' * (width - 21)}{Colors.RESET}│")
+    else:
+        for label, value in rows:
+            # Special handling for battery voltage
+            if label == "Voltage" and "V" in value:
+                value = colorize_battery_voltage(value)
+            
+            # Calculate padding to align to box width
+            # Account for ANSI codes by using visible length
+            visible_value = value
+            for color in [Colors.RED, Colors.GREEN, Colors.YELLOW, Colors.CYAN, Colors.BOLD, Colors.DIM, Colors.RESET]:
+                visible_value = visible_value.replace(color, "")
+            
+            label_part = f"  {label}:"
+            padding_needed = width - len(label_part) - len(visible_value) - 3
+            lines.append(f"│{label_part}{' ' * padding_needed}{value} │")
     
-    lines.append(bottom_border)
+    lines.append(f"└{'─' * (width - 2)}┘")
     return "\n".join(lines)
 
 def main():
@@ -370,38 +453,58 @@ def main():
         while rclpy.ok():
             rclpy.spin_once(node, timeout_sec=0.01)
             
-            # Collect all data for table
-            table_rows = []
+            clear_screen()
+            print(f"{Colors.CYAN}{Colors.BOLD}╔═══════════════════════════════════════════════════════════════╗{Colors.RESET}")
+            print(f"{Colors.CYAN}{Colors.BOLD}║         ROS 2 MOWER STATUS — Ctrl+C to quit                  ║{Colors.RESET}")
+            print(f"{Colors.CYAN}{Colors.BOLD}╚═══════════════════════════════════════════════════════════════╝{Colors.RESET}\n")
             
-            # Add node status
+            # Node Status Box
             node_statuses = node_status_watcher.snapshot()
-            for label, status in node_statuses:
-                table_rows.append([label, "Node Status", status, "—"])
+            if node_statuses:  # Only show if not empty
+                node_rows = []
+                for label, status in node_statuses:
+                    # Color code status
+                    if "ACTIVE" in status:
+                        status = f"{Colors.GREEN}{status}{Colors.RESET}"
+                    elif "OFFLINE" in status:
+                        status = f"{Colors.RED}{status}{Colors.RESET}"
+                    node_rows.append((label, status))
+                print(format_box("Node Status", node_rows, None))
+                print()
             
-            # Add feature enable states
+            # System Features Box
             feature_lines, feature_age = features_watcher.snapshot()
-            for label, status in feature_lines:
-                age_display = age_str(feature_age) if feature_age is not None else "—"
-                table_rows.append([label, "Enabled", status, age_display])
+            if feature_lines:  # Only show if not empty
+                feature_rows = []
+                for label, status in feature_lines:
+                    # Color code enabled/disabled
+                    if "✓ ON" in status:
+                        status = f"{Colors.GREEN}{status}{Colors.RESET}"
+                    elif "✗ OFF" in status:
+                        status = f"{Colors.DIM}{status}{Colors.RESET}"
+                    feature_rows.append((label, status))
+                print(format_box("System Features", feature_rows, feature_age))
+                print()
             
-            # Add regular watchers
+            # Regular watchers - each in its own box
             for w in watchers:
                 msg, age = w.snapshot()
-                age_display = age_str(age) if age is not None else "—"
+                
+                # Skip empty topics
                 if msg is None:
-                    table_rows.append([w.spec.name, "Data", "—", "—"])
                     continue
+                
+                # Render all fields for this topic
+                field_rows = []
                 for f in w.spec.fields:
                     label, value = f.render(msg)
-                    table_rows.append([w.spec.name, label, value, age_display])
-
-            clear_screen()
-            print("╔═══════════════════════════════════════════════════════════════════╗")
-            print("║           ROS 2 MOWER STATUS — Ctrl+C to quit                    ║")
-            print("╚═══════════════════════════════════════════════════════════════════╝\n")
-            
-            table = format_table(table_rows, ["Component", "Property", "Value", "Age"])
-            print(table)
+                    if value != "—":  # Only show non-empty values
+                        field_rows.append((label, value))
+                
+                # Only display box if there are non-empty fields
+                if field_rows:
+                    print(format_box(w.spec.name, field_rows, age))
+                    print()
             
             if args.once:
                 break

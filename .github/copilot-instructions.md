@@ -144,12 +144,41 @@ Use `ros2 launch ... --show-args` to see all available parameters.
 ### Package Disabling Convention
 Use `COLCON_IGNORE` file in package root to skip building (e.g., `diffdrive_arduino` is disabled). Useful for optional or WIP packages.
 
+## CLI Status Monitor (`status.py`)
+
+**Terminal-based real-time status dashboard** for monitoring all ROS 2 topics and system state:
+- **Box-style UI**: Each topic displayed in its own colored box with title and age indicator
+- **Auto-hide empty topics**: Only shows topics with active data
+- **Color-coded indicators**:
+  - Battery voltage: **Green** (≥26.5V), **Red** (<26.5V)
+  - Node status: **Green** (ACTIVE), **Red** (OFFLINE)
+  - Features: **Green** (enabled), **Dimmed** (disabled)
+- **Monitors by default**:
+  - Node Status: bridge, camera, MAVROS, motor_controller, sllidar, gps_rtk, imu
+  - System Features: Motors, Sensors, GPS, LiDAR, Camera enable states
+  - Robot Mode: Current operating mode (idle/charging/mowing/full)
+  - Battery: Voltage, percentage, current from `/battery_state`
+  - GPS/RTK: Lat/lon, altitude, RTK status, accuracy from `/gps/fix`
+  - IMU: Roll/pitch/yaw, angular velocity, linear acceleration from `/mavros/imu/data`
+
+**Usage**:
+```bash
+./status.py                          # Run with defaults (2 Hz refresh)
+./status.py --hz 5                   # Faster refresh rate
+./status.py --yaml sources.yaml      # Load custom topic config
+./status.py --add "MyTopic:/my_topic:std_msgs/msg/Float32:value=data"
+./status.py --once                   # Print once and exit
+```
+
+**Customization**: Extend with `--add` for inline topics or `--yaml` for YAML config files. Supports nested paths (`orientation.x`), computed fields (`c:yaw_deg`), and custom formatting.
+
 ## Common Development Tasks
 
 | Task | How-To |
 |------|--------|
 | **Add new sensor node** | Copy `rosmower/scripts/tof_guard.py` template; declare params, publish sensor_msgs, add launch file entry |
 | **Debug node communication** | `ros2 topic list`, `ros2 topic echo /topic_name`, `ros2 node info /node_name`, `ros2 topic hz /topic_name` |
+| **Monitor system status** | Run `./status.py` for live terminal dashboard with color-coded status (battery, GPS, IMU, nodes) |
 | **Change motor behavior** | Edit velocity/PWM kinematics in `hoverboard_bridge_node.py` or override launch args (`max_lin`, `wheel_radius`) |
 | **Configure device paths** | Edit launch file (e.g., `launch_robot.launch.py`) or pass `arg:=value` on command line |
 | **Test single component** | `ros2 launch rosmower hoverboard_bridge_only.launch.py` (motor-only), `ros2 launch rosmower rplidar.launch.py` (LIDAR-only) |
@@ -187,8 +216,9 @@ Use `COLCON_IGNORE` file in package root to skip building (e.g., `diffdrive_ardu
 - **Robot description**: [rosmower/description/](src/rosmower/description) (URDF/SDF)
 - **Package docs**: Each `src/<package>/README.md` for hardware-specific setup
 - **Web interface**: [web_server.py](web_server.py) (Flask server), [src/rosmower/web/](src/rosmower/web) (HTML/CSS/JS frontend)
+- **CLI status monitor**: [status.py](status.py) (terminal dashboard with color-coded boxes)
 - **Docker setup**: [DOCKER_README.md](DOCKER_README.md), [docker-helper.sh](docker-helper.sh)
-- **Configuration**: [sources.yaml](sources.yaml) (telemetry config), [cyclonedds.xml](cyclonedds.xml) (ROS 2 DDS)
+- **Configuration**: [sources.yaml](sources.yaml) (telemetry config for status.py), [cyclonedds.xml](cyclonedds.xml) (ROS 2 DDS)
 
 ---
 

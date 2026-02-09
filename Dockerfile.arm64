@@ -70,6 +70,8 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-v4l2-camera \
     ros-${ROS_DISTRO}-nmea-navsat-driver \
     ros-${ROS_DISTRO}-web-video-server \
+    ros-${ROS_DISTRO}-nav2* \
+    ros-${ROS_DISTRO}-slam-toolbox* \
     && rm -rf /var/lib/apt/lists/*
 
 # Install NVIDIA Jetson multimedia libraries and GStreamer plugins
@@ -108,7 +110,8 @@ RUN rosdep install --from-paths src --ignore-src -r -y --skip-keys="hailo_msgs" 
 RUN pip3 install \
     smbus2 \
     pyserial \
-    pynmea2
+    pynmea2 \
+    paho-mqtt>=1.6.1
 
 # Build the workspace
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \

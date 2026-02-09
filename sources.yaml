@@ -13,6 +13,13 @@
     - {label: Lon, path: longitude, fmt: "{:.6f}"}
     - {label: Alt, path: altitude,  fmt: "{:.2f} m"}
     - {label: Status, path: status.status, fmt: "{}"}
+    - {label: Accuracy, computed: gps_accuracy, fmt: "{:.2f} m"}
+
+- name: GPS Sats
+  topic: /gps/satellites
+  type: std_msgs/msg/String
+  fields:
+    - {label: Count, path: data, fmt: "{}"}
 
 - name: IMU
   topic: /imu

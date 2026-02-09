@@ -26,9 +26,9 @@ def generate_launch_description():
             parameters=[params_file]
         ),
         Node(
-            package='nav2_recoveries',
-            executable='recoveries_server',
-            name='recoveries_server',
+            package='nav2_behaviors',
+            executable='behavior_server',
+            name='behavior_server',
             output='screen',
             parameters=[params_file]
         ),
@@ -50,7 +50,7 @@ def generate_launch_description():
                 'node_names': [
                     'controller_server',
                     'planner_server',
-                    'recoveries_server',
+                    'behavior_server',
                     'bt_navigator'
                 ]
             }]

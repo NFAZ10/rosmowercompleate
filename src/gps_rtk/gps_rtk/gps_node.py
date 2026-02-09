@@ -46,6 +46,7 @@ class GPSNode(Node):
         self.fix_pub = None
         self.velocity_pub = None
         self.nmea_pub = None
+        self.sat_pub = None
         self.ntrip_socket = None
         self.ntrip_thread = None
         self.ntrip_running = False
@@ -83,10 +84,12 @@ class GPSNode(Node):
         self.fix_pub = self.create_lifecycle_publisher(NavSatFix, 'gps/fix', 10)
         self.velocity_pub = self.create_lifecycle_publisher(TwistStamped, 'gps/velocity', 10)
         self.nmea_pub = self.create_lifecycle_publisher(String, 'gps/nmea_sentence', 10)
+        self.sat_pub = self.create_lifecycle_publisher(String, 'gps/satellites', 10)
         
-        # Store last valid position
+        # Store last valid position and satellite count
         self.last_fix = NavSatFix()
         self.last_fix.header.frame_id = self.frame_id
+        self.last_sat_count = 0
         
         self.get_logger().info('GPS node configured')
         return TransitionCallbackReturn.SUCCESS
@@ -99,6 +102,7 @@ class GPSNode(Node):
         self.fix_pub.on_activate(state)
         self.velocity_pub.on_activate(state)
         self.nmea_pub.on_activate(state)
+        self.sat_pub.on_activate(state)
         
         # Connect to serial port
         self.connect_serial()
@@ -282,6 +286,13 @@ class GPSNode(Node):
             fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_APPROXIMATED
         else:
             fix.position_covariance_type = NavSatFix.COVARIANCE_TYPE_UNKNOWN
+        
+        # Publish satellite count
+        if msg.num_sats is not None:
+            self.last_sat_count = int(msg.num_sats)
+            sat_msg = String()
+            sat_msg.data = str(self.last_sat_count)
+            self.sat_pub.publish(sat_msg)
         
         self.last_fix = fix
         self.fix_pub.publish(fix)

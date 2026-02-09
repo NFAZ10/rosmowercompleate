@@ -50,7 +50,8 @@ RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | d
 RUN pip3 install \
     smbus2 \
     pyserial \
-    pynmea2
+    pynmea2 \
+    paho-mqtt>=1.6.1
 
 
 # Install additional ROS 2 packages that might be needed
