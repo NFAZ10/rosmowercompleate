@@ -35,6 +35,9 @@ install(PROGRAMS
   scripts/imu_bridge.py
   scripts/rplidar_motor_control.py
   scripts/battery_splitter.py
+  scripts/battery_monitor.py
+  scripts/zone_manager.py
+  scripts/zone_recorder.py
   scripts/relay_control_node.py
   scripts/vl53_bridge.py
   scripts/tof_to_scan.py
@@ -44,17 +47,13 @@ install(PROGRAMS
   DESTINATION lib/${PROJECT_NAME}
 )
 
-# Build and install C++ rplidar motor control node
-find_package(rclcpp REQUIRED)
-find_package(sensor_msgs REQUIRED)
-find_package(std_srvs REQUIRED)
+# Build and install C++ rplidar motor control node (if needed in future)
+# find_package(rclcpp REQUIRED)
+# find_package(sensor_msgs REQUIRED)
+# find_package(std_srvs REQUIRED)
 
-
-
-install(TARGETS
-
-  DESTINATION lib/${PROJECT_NAME}
-)
+# Note: No C++ targets to build currently
+# Uncomment install(TARGETS...) when C++ nodes are added
 
 # Testing
 if(BUILD_TESTING)

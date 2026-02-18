@@ -1,0 +1,16 @@
+# Request
+string from_zone_id
+string to_zone_id
+string route_type  # DRIVEWAY, GATE_PASSAGE, AROUND_BUILDING, NARROW_PATH, ROAD_CROSSING
+string route_name
+float32 max_speed_mps
+float32 path_width_meters
+bool bidirectional
+bool mow_during_transit
+string[] tags
+
+---
+# Response
+bool success
+string route_id
+string message

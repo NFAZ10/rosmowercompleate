@@ -271,6 +271,27 @@ def default_sources() -> List[SourceSpec]:
                 FieldSpec("Linear Accel", computed="lin_acc_norm", fmt="{:.2f} m/s²"),
             ],
         ),
+        SourceSpec(
+            name="IMU (ICM20948)",
+            topic="/imu/data_raw",
+            type_str="sensor_msgs/msg/Imu",
+            fields=[
+                FieldSpec("Orientation", computed="rpy_deg"),
+                FieldSpec("Angular Vel", computed="ang_vel_norm", fmt="{:.3f} rad/s"),
+                FieldSpec("Linear Accel", computed="lin_acc_norm", fmt="{:.2f} m/s²"),
+            ],
+        ),
+        SourceSpec(
+            name="VESC Odometry",
+            topic="/odom",
+            type_str="nav_msgs/msg/Odometry",
+            fields=[
+                FieldSpec("Lin Speed", "twist.twist.linear.x", "{:.3f} m/s"),
+                FieldSpec("Ang Speed", "twist.twist.angular.z", "{:.3f} rad/s"),
+                FieldSpec("Pos X", "pose.pose.position.x", "{:.3f} m"),
+                FieldSpec("Pos Y", "pose.pose.position.y", "{:.3f} m"),
+            ],
+        ),
 
     ]
 
@@ -443,6 +464,7 @@ def main():
         "Camera": "camera",
         "MAVROS": "mavros",
         "Motor Ctrl": "motor_controller",
+        "VESC": "vesc_driver",
         "LiDAR": "sllidar",
         "GPS RTK": "gps_rtk",
         "IMU": "imu",

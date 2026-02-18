@@ -1,0 +1,7 @@
+string zone_id
+string zone_name
+float64 center_lat
+float64 center_lon
+int32 priority
+builtin_interfaces/Time last_mowed
+float32 estimated_mow_time_seconds

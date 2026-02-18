@@ -3,7 +3,7 @@
   <Domain id="any">
     <General>
       <Interfaces>
-        <NetworkInterface autodetermine="true" />
+        <NetworkInterface name="sdwan0" priority="default" multicast="default" />
       </Interfaces>
     </General>
   </Domain>

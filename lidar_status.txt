@@ -1,0 +1,36 @@
+=== SLAMTEC C1M1 LiDAR - WORKING ===
+
+✓ SOLUTION FOUND: Use 460800 baud (NOT 400000)
+
+Device: /dev/rplidar -> /dev/ttyUSB0
+Serial Number: D597E0F8C6E599D6B5E29FF656424D19
+Firmware: 1.02
+Hardware: Rev 18
+Status: HEALTHY
+
+Performance:
+- Scan rate: ~10 Hz (perfect)
+- Sample rate: 5 kHz
+- Max range: 16.0 m
+- Scan mode: Standard
+
+Launch command:
+  ros2 launch sllidar_ros2 sllidar_c1_launch.py \
+    serial_port:=/dev/rplidar \
+    serial_baudrate:=460800
+
+Topics published:
+  /scan (sensor_msgs/LaserScan) - RELIABLE QoS
+
+Services available:
+  /start_motor
+  /stop_motor
+
+Updated files:
+  - src/rosmower/launch/rplidar.launch.py (baud set to 460800)
+  - monitor_lidar.sh (automated monitoring script)
+
+Next steps if issues occur:
+1. Check USB autosuspend is disabled
+2. Verify /dev/rplidar symlink exists
+3. Monitor: docker exec rosmower_bridge bash -c "ros2 topic hz /scan"

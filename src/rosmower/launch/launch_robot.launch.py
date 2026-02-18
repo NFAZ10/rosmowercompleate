@@ -18,14 +18,18 @@ from launch.conditions import IfCondition, UnlessCondition
 # Full device path for hoverboard Arduino
 BY_ID = '/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0'
 
-# RPLIDAR device path
-RPLIDAR_BY_ID = "/dev/serial/by-id/usb-Silicon_Labs_CP2102_USB_to_UART_Bridge_Controller_0001-if00-port0"
+# RPLIDAR C1 device path (CP2102N chip)
+RPLIDAR_BY_ID = "/dev/serial/by-id/usb-1a86_USB_Serial-if00-port0"
 
 # Default FCU path for MAVROS (override at launch with: `ros2 launch ... dev:=/dev/ttyACM0`)
-DEFAULT_FCU = '/dev/ttyACM0'
+DEFAULT_FCU = '/dev/serial/by-id/usb-ArduPilot_SpeedyBeeF405WING_310037000850314E41313720-if00'
 
 
 def generate_launch_description():
+    # --- Launch arguments (must be declared before use in node conditions) ---
+    use_vesc            = LaunchConfiguration('use_vesc')
+    use_stereo_camera  = LaunchConfiguration('use_stereo_camera')
+
     # --- Battery Splitter Node ---
     battery_splitter_node = Node(
         package='rosmower',
@@ -40,47 +44,27 @@ def generate_launch_description():
             'percent_scale_0_100': True
         }]
     )
-    # --- Camera Node (v4l2_camera) ---
-    camera_node = Node(
-        package='v4l2_camera',
-        executable='v4l2_camera_node',
-        name='v4l2_camera',
-        namespace='camera',
+    # --- Stereo CSI Cameras (IMX219) ---
+    stereo_camera_node = Node(
+        package='stereo_camera_viewer',
+        executable='stereo_camera_node',
+        name='stereo_camera_node',
         output='screen',
         parameters=[{
-            'video_device': '/dev/video1',
-            'image_size': [640, 480],
-            'time_per_frame': [1, 30],
-            'pixel_format': 'YUYV',
-            'output_encoding': 'bgr8',
-            'camera_frame_id': 'camera_link_optical'
+            'left_camera_id': 0,       # sensor-id 0 = CAM0 port on Jetson carrier
+            'right_camera_id': 1,      # sensor-id 1 = CAM1 port on Jetson carrier
+            'width': 640,              # Balanced preset: 640x480 @ 15fps
+            'height': 480,             # Use 320x240 @ 10fps for minimal load
+            'fps': 15,                 # Use 1280x720 @ 15fps for high quality
+            'use_gstreamer': True,     # REQUIRED for CSI cameras on Jetson (hardware accel)
+            'flip_method': 0,          # 0=none, 2=rotate-180
+            'left_frame_id': 'left_camera_link',   # Match URDF
+            'right_frame_id': 'right_camera_link', # Match URDF
+            'jpeg_quality': 60,        # 50=minimal, 60=balanced, 75=high quality
+            'publish_raw': False       # KEEP FALSE to prevent crashes (compressed only)
         }],
-        remappings=[
-            ('image_raw', 'image_raw_unflipped'),
-            ('camera_info', 'camera_info_unflipped')
-        ]
-    )
-
-    # --- Image Flip Node to rotate camera 180 degrees ---
-    image_flip_node = Node(
-        package='rosmower',
-        executable='image_flip_node.py',
-        name='image_flip',
-        namespace='camera',
-        output='screen'
-    )
-
-    # --- Image Transport Republish Node (compressed topic) ---
-    image_transport_node = Node(
-        package='image_transport',
-        executable='republish',
-        name='image_republish',
-        output='screen',
-        arguments=['raw', 'compressed'],
-        remappings=[
-            ('in', '/camera/image_raw/flipped'),
-            ('out/compressed', '/camera/image_compressed')
-        ]
+        emulate_tty=True,
+        condition=IfCondition(use_stereo_camera)  # Enable/disable via launch arg
     )
     pkg = get_package_share_directory('rosmower')
 
@@ -157,7 +141,7 @@ def generate_launch_description():
         parameters=[{
             'port': BY_ID,
             'baud': 115200,
-            'max_pwm': 25,
+            'max_pwm': 100,
             'max_lin': 1.0,
             'max_ang': 2.0,
             'stat_period': 0.5,
@@ -168,6 +152,18 @@ def generate_launch_description():
         condition=IfCondition(arm)
     )
     hoverboard_group = GroupAction(actions=[hoverboard], condition=UnlessCondition(use_ros2_control))
+
+    # --- ICM20948 IMU Driver ---
+    icm20948_pkg = get_package_share_directory('icm20948_imu_driver')
+    icm20948_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(icm20948_pkg, 'launch', 'icm20948.launch.py')),
+        launch_arguments={
+            'i2c_bus': '7',
+            'i2c_address': '0x68',
+            'frame_id': 'imu_link',
+            'publish_rate': '100.0',
+        }.items(),
+    )
 
     # --- IMU Bridge Node ---
     imu_bridge =  Node(
@@ -231,7 +227,7 @@ def generate_launch_description():
         }],
     )
 
-    # --- RPLIDAR driver node ---
+    # --- RPLIDAR C1 driver node ---
     rplidar_node = Node(
         package='sllidar_ros2',
         executable='sllidar_node',
@@ -239,12 +235,12 @@ def generate_launch_description():
         output='log',
         arguments=['--ros-args', '--log-level', 'info'],
         parameters=[{
-            'serial_port': RPLIDAR_BY_ID,
-            'serial_baudrate': 115200,
-            'frame_id': 'laser_frame',
-            'angle_compensate': True,
-            'inverted': False,
-            'auto_standby': True,
+                'serial_port': RPLIDAR_BY_ID,
+                'serial_baudrate': 460800,  # C1 uses 460800 baud rate
+                'frame_id': 'lidar_link',    # Match URDF frame
+                'angle_compensate': True,
+                'scan_mode': 'Standard',     # C1 supports Standard mode
+                'inverted': False,
         }],
     )
 
@@ -272,16 +268,15 @@ def generate_launch_description():
 
 
 
-    # --- Static transform from laser to base_link ---
-    rplidar_tf = Node(
-        package='tf2_ros',
-        executable='static_transform_publisher',
-        name='laser_to_base_tf',
-        output='log',
-        arguments=['0.20','0','0.25','0','0','0','base_link','laser_frame', '--ros-args', '--log-level', 'warn']
-    )
 
-    delayed_rplidar = TimerAction(period=3.0, actions=[rplidar_motor_control, rplidar_node, rplidar_tf])
+    
+
+    # --- VESC Differential Drive Motor Controller ---
+    vesc_pkg = get_package_share_directory('vesc_driver')
+    vesc_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(vesc_pkg, 'launch', 'vesc_driver.launch.py')),
+        condition=IfCondition(use_vesc),
+    )
 
     # --- MAVROS Node ---
     mavros_node = Node(
@@ -300,29 +295,27 @@ def generate_launch_description():
         DeclareLaunchArgument('use_ros2_control', default_value='false'),
         DeclareLaunchArgument('use_twist_mux', default_value='false'),
         DeclareLaunchArgument('use_mavros', default_value='true'),
+        DeclareLaunchArgument('use_stereo_camera', default_value='true',
+                              description='Enable stereo cameras (disable if causing crashes)'),
 
         DeclareLaunchArgument('use_joint_state_gui', default_value='false',
                               description='Use joint_state_publisher_gui sliders'),
         DeclareLaunchArgument('dev', default_value=DEFAULT_FCU),
         DeclareLaunchArgument('arm', default_value='true', description='Enable motor arming if true'),
+        DeclareLaunchArgument('use_vesc', default_value='true',
+                              description='Launch VESC differential drive motor controller'),
 
         quiet_env,
         rsp,
-        relay,
         mode_manager_node,    # Mode manager for runtime mode switching
         jsp_group,            # <-- NEW: joint state publisher (headless or GUI)
-        #twist_mux_to_controller,
-        #twist_mux_to_bridge,
-        hoverboard_group,
+        icm20948_launch,      # ICM20948 IMU driver
         imu_bridge,
-        ekf_node,
-        rplidar_node, 
-        #tof,
-        camera_node,
-        image_flip_node,
-        image_transport_node,
+        rplidar_node,           # RPlidar C1 with motor control - ENABLED
+        #stereo_camera_node,        # Stereo CSI cameras (IMX219) - Now with HW accel
         battery_splitter_node,
         mavros_node,
+        vesc_launch,          # VESC differential drive motor controller
 
         
     ])

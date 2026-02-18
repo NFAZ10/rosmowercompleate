@@ -1,0 +1,19 @@
+# Stop Zone Recording Service
+# Stop recording and save the zone
+
+# Input: Save options
+bool save_zone           # If true, save zone; if false, just stop
+bool auto_close          # Automatically close polygon (connect last to first)
+bool simplify            # Apply Douglas-Peucker simplification
+float64 simplification_tolerance  # Simplification tolerance (meters, 0 = use default)
+
+---
+
+# Output: Result
+bool success
+string message
+rosmower_msgs/Zone zone  # The recorded zone (if save_zone was true)
+uint32 original_waypoint_count
+uint32 final_waypoint_count
+float64 total_distance
+float64 area

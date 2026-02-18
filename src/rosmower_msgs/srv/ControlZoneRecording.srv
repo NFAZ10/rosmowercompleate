@@ -1,0 +1,17 @@
+# Control Zone Recording Service
+# Pause, resume, or cancel recording
+
+# Command constants
+uint8 CMD_PAUSE = 0
+uint8 CMD_RESUME = 1
+uint8 CMD_CANCEL = 2
+
+# Input: Command
+uint8 command
+
+---
+
+# Output: Result
+bool success
+string message
+uint8 new_state  # New recording state after command

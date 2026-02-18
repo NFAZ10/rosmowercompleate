@@ -1,0 +1,10 @@
+# Request
+string from_zone_id  # empty string means all
+string to_zone_id    # empty string means all
+string route_type    # empty string means all
+
+---
+# Response
+bool success
+rosmower_msgs/RouteArray routes
+string message

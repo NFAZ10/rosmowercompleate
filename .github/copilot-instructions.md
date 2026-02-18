@@ -183,6 +183,7 @@ Use `COLCON_IGNORE` file in package root to skip building (e.g., `diffdrive_ardu
 | **Configure device paths** | Edit launch file (e.g., `launch_robot.launch.py`) or pass `arg:=value` on command line |
 | **Test single component** | `ros2 launch rosmower hoverboard_bridge_only.launch.py` (motor-only), `ros2 launch rosmower rplidar.launch.py` (LIDAR-only) |
 | **Check ROS 2 middleware** | Middleware config in `cyclonedds.xml` (CycloneDDS); used by all ROS 2 communication |
+| **Run Zenoh bridge** | Inside container: `zenoh-bridge-dds` to bridge ROS 2 DDS topics to Zenoh protocol for low-bandwidth/multi-robot scenarios |
 | **Access web interface** | Navigate to `http://<robot-ip>:8080` (control) or `/status` (monitoring); ensure rosbridge running: `./docker-helper.sh bridge` |
 | **Restart web server** | `sudo systemctl restart rosmower-web.service` (changes to `web_server.py` or HTML files require restart) |
 | **Add web API endpoint** | Edit `web_server.py`, add `@app.route()` decorator, restart service |
@@ -192,6 +193,11 @@ Use `COLCON_IGNORE` file in package root to skip building (e.g., `diffdrive_ardu
 - **ROS 2 Humble**: Core framework; all packages target humble (foxy/rolling support in individual READMEs).
 - **Nav2 Stack**: Autonomous navigation—expects odometry (`odom` frame) and LIDAR input; configured in `navigation_launch.py`.
 - **MAVROS**: FCU/PX4 integration (pre-installed in Docker, currently unused—see `test_mavros/` and `battery_splitter.py` for reference).
+- **Zenoh**: High-performance pub/sub protocol for distributed systems; installed in Docker containers.
+  - **`zenohd`**: Zenoh router/daemon for creating mesh networks
+  - **`zenoh-bridge-dds`**: DDS bridge for ROS 2 integration—enables ROS 2 topics over Zenoh protocol
+  - Use case: Low-bandwidth or unreliable network environments, multi-robot systems
+  - Commands available in container: `zenohd`, `zenoh-bridge-dds`
 - **Hardware Drivers**:
   - **Arduino**: Legacy motor control (diffdrive_arduino, currently disabled).
   - **SLAMTEC RPlidar**: Via `sllidar_ros2` package.

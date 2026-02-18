@@ -1,0 +1,27 @@
+{
+  // Zenoh router configuration for connecting to external router
+  mode: "router",
+  
+  // Listen on all interfaces
+  listen: {
+    endpoints: [
+      "tcp/0.0.0.0:7447",
+    ]
+  },
+  
+  // Connect to external router
+  connect: {
+    endpoints: [
+      "tcp/63.133.235.92:7447",
+    ]
+  },
+  
+  // Scouting configuration for router discovery
+  scouting: {
+    multicast: {
+      enabled: true,
+      address: "224.0.0.224:7446",
+      interface: "auto",
+    }
+  },
+}

@@ -16,6 +16,8 @@ services:
       - /run/udev:/run/udev:ro
       # Optional: mount external config or logs
       - ./logs:/ws/logs
+      # Mount cyclonedds config for Twingate/network settings
+      - ./cyclonedds.xml:/ws/cyclonedds.xml:ro
       # For GUI applications
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
     environment:
@@ -23,6 +25,9 @@ services:
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
+      - CYCLONEDDS_URI=/ws/cyclonedds.xml
+      - ROS_AUTOMATIC_DISCOVERY_RANGE=SUBNET
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     # Device mappings for specific hardware
     devices:
       - /dev/ttyACM0:/dev/ttyACM0  # MAVROS FCU
@@ -64,9 +69,11 @@ services:
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     volumes:
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
       - ./rviz_configs:/root
+      - ./cyclonedds.xml:/ws/cyclonedds.xml:ro
     command: >
       bash -c "
       source /opt/ros/humble/setup.bash &&
@@ -104,6 +111,7 @@ services:
       - LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
       - GST_PLUGIN_PATH=/usr/lib/aarch64-linux-gnu/gstreamer-1.0
       - BASH_ENV=/root/.bashrc
+      - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     devices:
       - /dev/video0:/dev/video0
       - /dev/video1:/dev/video1
@@ -115,3 +123,5 @@ services:
     command: bash
     profiles:
       - dev
+
+

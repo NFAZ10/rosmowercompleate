@@ -1,0 +1,14 @@
+# Start Zone Recording Service
+# Begin recording GPS waypoints for a new zone boundary
+
+# Input: Zone information
+string zone_name          # Name of the zone to create
+uint8 priority           # Zone priority (0-255, default: 5)
+bool use_visual_odometry # Use visual odometry for refinement (future Isaac ROS)
+
+---
+
+# Output: Result
+bool success
+string message
+builtin_interfaces/Time start_time

@@ -1,2 +1,0 @@
-# This package depends on hailo_msgs which is not available
-# Skipping to allow other packages to build successfully

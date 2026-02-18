@@ -4,7 +4,7 @@ from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 
 # Default by-id path (replace with your actual device if needed)
-DEFAULT_FCU = '/dev/ttyACM0'
+DEFAULT_FCU = '/dev/serial/by-id/usb-ArduPilot_SpeedyBeeF405WING_310037000850314E41313720-if00'
 
 
 def generate_launch_description():

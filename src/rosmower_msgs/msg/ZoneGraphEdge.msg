@@ -1,0 +1,6 @@
+string from_zone_id
+string to_zone_id
+string route_id
+float32 distance_meters
+float32 transit_time_seconds
+bool bidirectional

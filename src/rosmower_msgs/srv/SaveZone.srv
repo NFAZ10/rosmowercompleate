@@ -1,0 +1,4 @@
+Zone zone
+---
+bool success
+string message

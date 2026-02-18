@@ -1,0 +1,350 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="rosmower">
+
+  <!-- ==================== PROPERTIES ==================== -->
+  
+  <!-- Material properties -->
+  <xacro:property name="aluminum_density" value="2700.0"/> <!-- kg/m^3 -->
+  
+  <!-- Chassis dimensions -->
+  <xacro:property name="chassis_length" value="0.785"/> <!-- 785mm -->
+  <xacro:property name="chassis_width" value="0.550"/> <!-- 550mm -->
+  <xacro:property name="extrusion_size" value="0.040"/> <!-- 40mm x 40mm -->
+  
+  <!-- Wheel properties -->
+  <xacro:property name="drive_wheel_radius" value="0.1091"/> <!-- 27 inch circumference = 4.297 inch radius -->
+  <xacro:property name="drive_wheel_width" value="0.050"/> <!-- 50mm width -->
+  <xacro:property name="drive_wheel_mass" value="2.0"/> <!-- kg, estimated -->
+  <xacro:property name="wheel_separation" value="${chassis_width + 0.05}"/> <!-- Track width -->
+  
+  <xacro:property name="caster_wheel_radius" value="0.1016"/> <!-- 8 inches diameter = 4 inch radius -->
+  <xacro:property name="caster_wheel_width" value="0.040"/> <!-- 40mm width -->
+  <xacro:property name="caster_wheel_mass" value="0.5"/> <!-- kg -->
+  <xacro:property name="caster_swivel_offset" value="0.08"/> <!-- Offset from swivel axis to wheel center -->
+  <xacro:property name="caster_drop_height" value="0.08"/> <!-- Vertical drop from swivel to wheel axle -->
+  
+  <!-- Sensor properties -->
+  <xacro:property name="camera_spacing" value="0.0762"/> <!-- 3 inches -->
+  <xacro:property name="lidar_height_offset" value="0.100"/> <!-- 100mm above drive wheel height -->
+  
+  <!-- Colors for visualization -->
+  <material name="aluminum">
+    <color rgba="0.7 0.7 0.7 1.0"/>
+  </material>
+  
+  <material name="black">
+    <color rgba="0.1 0.1 0.1 1.0"/>
+  </material>
+  
+  <material name="blue">
+    <color rgba="0.2 0.3 0.8 1.0"/>
+  </material>
+  
+  <material name="red">
+    <color rgba="0.8 0.2 0.2 1.0"/>
+  </material>
+
+  <!-- ==================== MACROS ==================== -->
+  
+  <!-- Macro for calculating box inertia -->
+  <xacro:macro name="box_inertia" params="mass x y z">
+    <inertia
+      ixx="${(1/12) * mass * (y*y + z*z)}"
+      ixy="0.0" ixz="0.0"
+      iyy="${(1/12) * mass * (x*x + z*z)}"
+      iyz="0.0"
+      izz="${(1/12) * mass * (x*x + y*y)}"/>
+  </xacro:macro>
+  
+  <!-- Macro for calculating cylinder inertia (wheel) -->
+  <xacro:macro name="cylinder_inertia" params="mass r h">
+    <inertia
+      ixx="${(1/12) * mass * (3*r*r + h*h)}"
+      ixy="0.0" ixz="0.0"
+      iyy="${(1/12) * mass * (3*r*r + h*h)}"
+      iyz="0.0"
+      izz="${(1/2) * mass * r * r}"/>
+  </xacro:macro>
+  
+  <!-- Macro for extrusion rail -->
+  <xacro:macro name="extrusion_rail" params="name length parent x y z roll pitch yaw">
+    <xacro:property name="rail_mass" value="${aluminum_density * extrusion_size * extrusion_size * length}"/>
+    
+    <link name="${name}">
+      <visual>
+        <geometry>
+          <box size="${length} ${extrusion_size} ${extrusion_size}"/>
+        </geometry>
+        <material name="aluminum"/>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="${length} ${extrusion_size} ${extrusion_size}"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="${rail_mass}"/>
+        <xacro:box_inertia mass="${rail_mass}" x="${length}" y="${extrusion_size}" z="${extrusion_size}"/>
+      </inertial>
+    </link>
+    
+    <joint name="${name}_joint" type="fixed">
+      <parent link="${parent}"/>
+      <child link="${name}"/>
+      <origin xyz="${x} ${y} ${z}" rpy="${roll} ${pitch} ${yaw}"/>
+    </joint>
+  </xacro:macro>
+  
+  <!-- Macro for drive wheel -->
+  <xacro:macro name="drive_wheel" params="prefix reflect">
+    <link name="${prefix}_wheel">
+      <visual>
+        <geometry>
+          <cylinder radius="${drive_wheel_radius}" length="${drive_wheel_width}"/>
+        </geometry>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <material name="black"/>
+      </visual>
+      <collision>
+        <geometry>
+          <cylinder radius="${drive_wheel_radius}" length="${drive_wheel_width}"/>
+        </geometry>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      </collision>
+      <inertial>
+        <mass value="${drive_wheel_mass}"/>
+        <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+        <xacro:cylinder_inertia mass="${drive_wheel_mass}" r="${drive_wheel_radius}" h="${drive_wheel_width}"/>
+      </inertial>
+    </link>
+    
+    <joint name="${prefix}_wheel_joint" type="continuous">
+      <parent link="base_link"/>
+      <child link="${prefix}_wheel"/>
+      <origin xyz="${chassis_length/2 - 0.08} ${reflect * wheel_separation/2} 0" rpy="0 0 0"/>
+      <axis xyz="0 1 0"/>
+      <dynamics damping="0.1" friction="0.5"/>
+    </joint>
+    
+    <!-- Transmission for ros2_control -->
+    <transmission name="${prefix}_wheel_trans">
+      <type>transmission_interface/SimpleTransmission</type>
+      <joint name="${prefix}_wheel_joint">
+        <hardwareInterface>hardware_interface/VelocityJointInterface</hardwareInterface>
+      </joint>
+      <actuator name="${prefix}_wheel_motor">
+        <mechanicalReduction>1</mechanicalReduction>
+      </actuator>
+    </transmission>
+  </xacro:macro>
+  
+  <!-- Macro for camera (with optical frame) -->
+  <xacro:macro name="camera" params="prefix reflect">
+    <link name="${prefix}_camera_link">
+      <visual>
+        <geometry>
+          <box size="0.025 0.08 0.025"/>
+        </geometry>
+        <material name="blue"/>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="0.025 0.08 0.025"/>
+        </geometry>
+      </collision>
+      <inertial>
+        <mass value="0.1"/>
+        <xacro:box_inertia mass="0.1" x="0.025" y="0.08" z="0.025"/>
+      </inertial>
+    </link>
+    
+    <joint name="${prefix}_camera_joint" type="fixed">
+      <parent link="base_link"/>
+      <child link="${prefix}_camera_link"/>
+      <!-- Mount at front center, slightly elevated, spaced horizontally -->
+      <origin xyz="${chassis_length/2 - 0.02} ${reflect * camera_spacing/2} 0.05" rpy="0 0 0"/>
+    </joint>
+    
+    <!-- Camera optical frame (REP 103: Z forward, X right, Y down) -->
+    <link name="${prefix}_camera_optical_frame"/>
+    
+    <joint name="${prefix}_camera_optical_joint" type="fixed">
+      <parent link="${prefix}_camera_link"/>
+      <child link="${prefix}_camera_optical_frame"/>
+      <origin xyz="0 0 0" rpy="${-pi/2} 0 ${-pi/2}"/>
+    </joint>
+  </xacro:macro>
+
+  <!-- ==================== ROBOT STRUCTURE ==================== -->
+  
+  <!-- Base link (virtual center of chassis frame) -->
+  <link name="base_link">
+    <!-- Visual representation: central platform plate -->
+    <visual>
+      <geometry>
+        <box size="${chassis_length - 2*extrusion_size} ${chassis_width - 2*extrusion_size} 0.005"/>
+      </geometry>
+      <origin xyz="0 0 ${extrusion_size/2}" rpy="0 0 0"/>
+      <material name="aluminum"/>
+    </visual>
+    <collision>
+      <geometry>
+        <box size="${chassis_length - 2*extrusion_size} ${chassis_width - 2*extrusion_size} 0.005"/>
+      </geometry>
+      <origin xyz="0 0 ${extrusion_size/2}" rpy="0 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="2.0"/>
+      <origin xyz="0 0 ${extrusion_size/2}" rpy="0 0 0"/>
+      <xacro:box_inertia mass="2.0" x="${chassis_length - 2*extrusion_size}" y="${chassis_width - 2*extrusion_size}" z="0.005"/>
+    </inertial>
+  </link>
+  
+  <!-- Chassis frame: Two longitudinal rails -->
+  <xacro:extrusion_rail 
+    name="left_rail" 
+    length="${chassis_length}" 
+    parent="base_link"
+    x="0" y="${chassis_width/2 - extrusion_size/2}" z="${extrusion_size/2}"
+    roll="0" pitch="0" yaw="0"/>
+  
+  <xacro:extrusion_rail 
+    name="right_rail" 
+    length="${chassis_length}" 
+    parent="base_link"
+    x="0" y="${-chassis_width/2 + extrusion_size/2}" z="${extrusion_size/2}"
+    roll="0" pitch="0" yaw="0"/>
+  
+  <!-- Front cross member -->
+  <xacro:extrusion_rail 
+    name="front_cross" 
+    length="${chassis_width}" 
+    parent="base_link"
+    x="${chassis_length/2 - extrusion_size/2}" y="0" z="${extrusion_size/2}"
+    roll="0" pitch="0" yaw="${pi/2}"/>
+  
+  <!-- Rear cross member -->
+  <xacro:extrusion_rail 
+    name="rear_cross" 
+    length="${chassis_width}" 
+    parent="base_link"
+    x="${-chassis_length/2 + extrusion_size/2}" y="0" z="${extrusion_size/2}"
+    roll="0" pitch="0" yaw="${pi/2}"/>
+  
+  <!-- Middle cross member for rigidity -->
+  <xacro:extrusion_rail 
+    name="middle_cross" 
+    length="${chassis_width}" 
+    parent="base_link"
+    x="0" y="0" z="${extrusion_size/2}"
+    roll="0" pitch="0" yaw="${pi/2}"/>
+  
+  <!-- ==================== DRIVE WHEELS ==================== -->
+  
+  <xacro:drive_wheel prefix="left" reflect="1"/>
+  <xacro:drive_wheel prefix="right" reflect="-1"/>
+  
+  <!-- ==================== REAR CASTER WHEEL ==================== -->
+  
+  <!-- Swivel base -->
+  <link name="caster_swivel">
+    <visual>
+      <geometry>
+        <cylinder radius="0.015" length="0.04"/>
+      </geometry>
+      <material name="aluminum"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.015" length="0.04"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.3"/>
+      <xacro:cylinder_inertia mass="0.3" r="0.015" h="0.04"/>
+    </inertial>
+  </link>
+  
+  <joint name="caster_swivel_joint" type="continuous">
+    <parent link="base_link"/>
+    <child link="caster_swivel"/>
+    <!-- Position at rear edge, height calculated so caster wheel touches ground -->
+    <origin xyz="${-chassis_length/2 + extrusion_size/2} 0 ${-drive_wheel_radius + caster_drop_height + caster_wheel_radius}" rpy="0 0 0"/>
+    <axis xyz="0 0 1"/>
+    <dynamics damping="0.05" friction="0.1"/>
+  </joint>
+  
+  <!-- Caster wheel -->
+  <link name="caster_wheel">
+    <visual>
+      <geometry>
+        <cylinder radius="${caster_wheel_radius}" length="${caster_wheel_width}"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      <material name="black"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="${caster_wheel_radius}" length="${caster_wheel_width}"/>
+      </geometry>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+    </collision>
+    <inertial>
+      <mass value="${caster_wheel_mass}"/>
+      <origin xyz="0 0 0" rpy="${pi/2} 0 0"/>
+      <xacro:cylinder_inertia mass="${caster_wheel_mass}" r="${caster_wheel_radius}" h="${caster_wheel_width}"/>
+    </inertial>
+  </link>
+  
+  <joint name="caster_wheel_joint" type="continuous">
+    <parent link="caster_swivel"/>
+    <child link="caster_wheel"/>
+    <origin xyz="${caster_swivel_offset} 0 ${-caster_drop_height}" rpy="0 0 0"/>
+    <axis xyz="0 1 0"/>
+    <dynamics damping="0.01" friction="0.05"/>
+  </joint>
+  
+  <!-- ==================== SENSORS ==================== -->
+  
+  <!-- Stereo cameras -->
+  <xacro:camera prefix="left" reflect="1"/>
+  <xacro:camera prefix="right" reflect="-1"/>
+  
+  <!-- LiDAR -->
+  <link name="lidar_link">
+    <visual>
+      <geometry>
+        <cylinder radius="0.04" length="0.06"/>
+      </geometry>
+      <material name="red"/>
+    </visual>
+    <collision>
+      <geometry>
+        <cylinder radius="0.04" length="0.06"/>
+      </geometry>
+    </collision>
+    <inertial>
+      <mass value="0.2"/>
+      <xacro:cylinder_inertia mass="0.2" r="0.04" h="0.06"/>
+    </inertial>
+  </link>
+  
+  <joint name="lidar_joint" type="fixed">
+    <parent link="base_link"/>
+    <child link="lidar_link"/>
+    <!-- Mount 100mm above drive wheel height, centered -->
+    <origin xyz="0 0 ${lidar_height_offset + 0.03}" rpy="0 0 0"/>
+  </joint>
+  
+  <!-- ==================== VIRTUAL LINKS FOR NAVIGATION ==================== -->
+  
+  <!-- Footprint link (ground projection for Nav2) -->
+  <link name="base_footprint"/>
+  
+  <joint name="base_footprint_joint" type="fixed">
+    <parent link="base_footprint"/>
+    <child link="base_link"/>
+    <origin xyz="0 0 ${drive_wheel_radius}" rpy="0 0 0"/>
+  </joint>
+
+</robot>

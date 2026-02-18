@@ -514,9 +514,11 @@
         let maxAngularSpeed = 2.0; // rad/s
         
         // Connect to ROS
+        let rosbridgeUrl = 'ws://10.31.18.195:9090'; // Default fallback
+        
         function connectROS() {
             ros = new ROSLIB.Ros({
-                url: 'ws://10.0.212.198:9090'
+                url: rosbridgeUrl
             });
             
             ros.on('connection', function() {
@@ -556,7 +558,7 @@
             // Camera subscriber (compressed image)
             imageTopic = new ROSLIB.Topic({
                 ros: ros,
-                name: '/camera/image_compressed',
+                name: '/stereo/right/image_raw_compressed',
                 messageType: 'sensor_msgs/CompressedImage'
             });
             
@@ -566,7 +568,7 @@
             });
         }
         
-        // Display image on canvas
+        // Display image on canvass
         function displayImage(canvasId, placeholderId, base64Data) {
             const canvas = document.getElementById(canvasId);
             const placeholder = document.getElementById(placeholderId);
@@ -749,8 +751,18 @@
             initializeControls();
         }
         
-        // Initialize ROS connection
-        connectROS();
+        // Fetch device IP and initialize ROS connection
+        fetch('/api/ip')
+            .then(response => response.json())
+            .then(data => {
+                rosbridgeUrl = `ws://${data.ip}:9090`;
+                connectROS();
+            })
+            .catch(error => {
+                console.error('Failed to fetch device IP:', error);
+                // Fallback to default
+                connectROS();
+            });
     </script>
 </body>
 </html>

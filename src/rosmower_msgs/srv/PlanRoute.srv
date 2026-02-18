@@ -1,0 +1,13 @@
+# Request
+string start_zone_id
+string end_zone_id
+bool allow_mowing_routes  # whether to allow routes with mow_during_transit=true
+
+---
+# Response
+bool success
+string message
+string[] route_ids
+float32 total_distance_meters
+float32 estimated_time_seconds
+bool path_exists

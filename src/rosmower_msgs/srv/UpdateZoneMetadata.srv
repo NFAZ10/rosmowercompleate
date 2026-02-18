@@ -1,0 +1,10 @@
+# Request
+string zone_id
+int32 priority  # -1 means don't update
+float32 estimated_mow_time_seconds  # -1 means don't update
+bool update_last_mowed  # if true, update to current time
+
+---
+# Response
+bool success
+string message

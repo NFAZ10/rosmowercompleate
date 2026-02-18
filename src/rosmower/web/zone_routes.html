@@ -1,0 +1,732 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multi-Zone Route Manager - ROS Mower</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .main-container {
+            max-width: 1600px;
+            margin: 0 auto;
+        }
+        .card {
+            border-radius: 15px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+            margin-bottom: 20px;
+        }
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            font-weight: bold;
+            border-radius: 15px 15px 0 0 !important;
+        }
+        .zone-list-item {
+            padding: 10px;
+            margin: 5px 0;
+            border-radius: 8px;
+            background: #f8f9fa;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .zone-list-item:hover {
+            background: #e9ecef;
+            transform: translateX(5px);
+        }
+        .zone-enabled {
+            border-left: 4px solid #28a745;
+        }
+        .zone-disabled {
+            border-left: 4px solid #dc3545;
+            opacity: 0.6;
+        }
+        .route-card {
+            border-left: 4px solid #17a2b8;
+            margin: 10px 0;
+            padding: 15px;
+            border-radius: 8px;
+            background: white;
+        }
+        .route-type-badge {
+            font-size: 0.75rem;
+            padding: 4px 8px;
+        }
+        .gps-quality-good {
+            color: #28a745;
+        }
+        .gps-quality-medium {
+            color: #ffc107;
+        }
+        .gps-quality-poor {
+            color: #dc3545;
+        }
+        #graph-canvas {
+            width: 100%;
+            height: 500px;
+            border: 2px solid #dee2e6;
+            border-radius: 10px;
+            background: white;
+        }
+        .recording-status {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 1000;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        .status-recording {
+            background: #dc3545;
+            color: white;
+            animation: pulse 1.5s infinite;
+        }
+        .status-paused {
+            background: #ffc107;
+            color: black;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .btn-control {
+            margin: 5px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Recording Status Indicator -->
+    <div id="recordingStatus" class="recording-status d-none">
+        <i class="bi bi-record-circle"></i>
+        <span id="statusText">Recording...</span>
+        <div class="small mt-2">
+            <span id="waypointCount">0</span> waypoints | 
+            <span id="distanceCount">0</span>m
+        </div>
+    </div>
+
+    <div class="main-container">
+        <div class="text-center mb-4">
+            <h1 class="text-white"><i class="bi bi-diagram-3"></i> Multi-Zone Route Manager</h1>
+            <p class="text-white-50">Manage zones and record safe transit routes</p>
+        </div>
+
+        <!-- Navigation -->
+        <div class="card mb-3">
+            <div class="card-body">
+                <a href="/" class="btn btn-secondary btn-sm"><i class="bi bi-house"></i> Home</a>
+                <a href="/zones" class="btn btn-secondary btn-sm"><i class="bi bi-map"></i> Zone Manager</a>
+                <a href="/zones/recorder" class="btn btn-secondary btn-sm"><i class="bi bi-record"></i> Zone Recorder</a>
+                <a href="/routes" class="btn btn-primary btn-sm"><i class="bi bi-signpost"></i> Route Manager</a>
+            </div>
+        </div>
+
+        <div class="row">
+            <!-- Left Panel: Zones -->
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-map-fill"></i> Zones
+                        <button class="btn btn-sm btn-light float-end" onclick="refreshZones()">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div class="card-body" style="max-height: 600px; overflow-y: auto;">
+                        <div id="zoneList">
+                            <div class="text-center text-muted">
+                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                <p class="small mt-2">Loading zones...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GPS Status -->
+                <div class="card mt-3">
+                    <div class="card-header">
+                        <i class="bi bi-geo-alt-fill"></i> GPS Status
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <strong>Quality:</strong>
+                            <span id="gpsQuality" class="gps-quality-medium">
+                                <i class="bi bi-wifi"></i> Checking...
+                            </span>
+                        </div>
+                        <div class="mb-2">
+                            <strong>Position:</strong><br>
+                            <small id="gpsPosition">Lat: --, Lon: --</small>
+                        </div>
+                        <div class="mb-2">
+                            <strong>HDOP:</strong>
+                            <span id="hdopValue">--</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Middle Panel: Route Recording -->
+            <div class="col-md-5">
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-record-circle"></i> Route Recording
+                    </div>
+                    <div class="card-body">
+                        <form id="routeForm">
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">From Zone</label>
+                                    <select class="form-select" id="fromZone" required>
+                                        <option value="">Select zone...</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">To Zone</label>
+                                    <select class="form-select" id="toZone" required>
+                                        <option value="">Select zone...</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="mb-3">
+                                <label class="form-label">Route Name</label>
+                                <input type="text" class="form-control" id="routeName" placeholder="e.g., Main Driveway">
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Route Type</label>
+                                    <select class="form-select" id="routeType">
+                                        <option value="DRIVEWAY">Driveway</option>
+                                        <option value="GATE_PASSAGE">Gate Passage</option>
+                                        <option value="AROUND_BUILDING">Around Building</option>
+                                        <option value="NARROW_PATH">Narrow Path</option>
+                                        <option value="ROAD_CROSSING">Road Crossing</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Max Speed (m/s)</label>
+                                    <input type="number" class="form-control" id="maxSpeed" value="0.5" step="0.1" min="0.1" max="2.0">
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <label class="form-label">Path Width (m)</label>
+                                    <input type="number" class="form-control" id="pathWidth" value="2.0" step="0.5" min="0.5" max="10.0">
+                                </div>
+                                <div class="col-md-6">
+                                    <label class="form-label">Tags (comma separated)</label>
+                                    <input type="text" class="form-control" id="routeTags" placeholder="e.g., paved, narrow">
+                                </div>
+                            </div>
+
+                            <div class="row mb-3">
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="bidirectional" checked>
+                                        <label class="form-check-label" for="bidirectional">
+                                            Bidirectional
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="col-md-6">
+                                    <div class="form-check form-switch">
+                                        <input class="form-check-input" type="checkbox" id="mowDuringTransit">
+                                        <label class="form-check-label" for="mowDuringTransit">
+                                            Mow During Transit
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="alert alert-info small">
+                                <i class="bi bi-info-circle"></i>
+                                <strong>Recording Tips:</strong>
+                                <ul class="mb-0 small">
+                                    <li>Walk slowly along the desired path</li>
+                                    <li>Wait for good GPS quality (HDOP &lt; 2.0)</li>
+                                    <li>Record in clear weather for best accuracy</li>
+                                    <li>Add 1-2 meter buffer for GPS drift</li>
+                                </ul>
+                            </div>
+
+                            <div class="d-grid gap-2">
+                                <button type="button" class="btn btn-success btn-lg" onclick="startRecording()" id="startBtn">
+                                    <i class="bi bi-play-circle"></i> Start Recording
+                                </button>
+                                <div class="btn-group" id="controlButtons" style="display: none;">
+                                    <button type="button" class="btn btn-warning" onclick="pauseRecording()" id="pauseBtn">
+                                        <i class="bi bi-pause-circle"></i> Pause
+                                    </button>
+                                    <button type="button" class="btn btn-success" onclick="resumeRecording()" id="resumeBtn" style="display: none;">
+                                        <i class="bi bi-play-circle"></i> Resume
+                                    </button>
+                                    <button type="button" class="btn btn-primary" onclick="stopRecording()">
+                                        <i class="bi bi-stop-circle"></i> Stop & Save
+                                    </button>
+                                    <button type="button" class="btn btn-danger" onclick="cancelRecording()">
+                                        <i class="bi bi-x-circle"></i> Cancel
+                                    </button>
+                                </div>
+                            </div>
+                        </form>
+
+                        <div class="mt-3" id="recordingStats" style="display: none;">
+                            <div class="card bg-light">
+                                <div class="card-body">
+                                    <h6>Recording Statistics</h6>
+                                    <div class="row small">
+                                        <div class="col-6">
+                                            <strong>Waypoints:</strong> <span id="statsWaypoints">0</span>
+                                        </div>
+                                        <div class="col-6">
+                                            <strong>Distance:</strong> <span id="statsDistance">0.0</span>m
+                                        </div>
+                                        <div class="col-6 mt-2">
+                                            <strong>Duration:</strong> <span id="statsDuration">0</span>s
+                                        </div>
+                                        <div class="col-6 mt-2">
+                                            <strong>GPS Quality:</strong> <span id="statsGPSQuality">--</span>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Right Panel: Route List & Graph -->
+            <div class="col-md-4">
+                <div class="card mb-3">
+                    <div class="card-header">
+                        <i class="bi bi-list-ul"></i> Recorded Routes
+                        <button class="btn btn-sm btn-light float-end" onclick="refreshRoutes()">
+                            <i class="bi bi-arrow-clockwise"></i>
+                        </button>
+                    </div>
+                    <div class="card-body" style="max-height: 400px; overflow-y: auto;">
+                        <div id="routeList">
+                            <div class="text-center text-muted">
+                                <div class="spinner-border spinner-border-sm" role="status"></div>
+                                <p class="small mt-2">Loading routes...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header">
+                        <i class="bi bi-diagram-3"></i> Zone Connectivity Graph
+                    </div>
+                    <div class="card-body">
+                        <canvas id="graph-canvas"></canvas>
+                        <div class="mt-2 small text-muted text-center">
+                            Circles = Zones | Lines = Routes
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let isRecording = false;
+        let isPaused = false;
+        let statusUpdateInterval = null;
+
+        // Load zones on page load
+        document.addEventListener('DOMContentLoaded', function() {
+            refreshZones();
+            refreshRoutes();
+            refreshGraph();
+            
+            // Start status polling
+            statusUpdateInterval = setInterval(updateStatus, 1000);
+        });
+
+        async function refreshZones() {
+            try {
+                // Load zones from zone manager
+                const response = await fetch('/api/zones/graph');
+                const data = await response.json();
+                
+                const zoneList = document.getElementById('zoneList');
+                const fromZone = document.getElementById('fromZone');
+                const toZone = document.getElementById('toZone');
+                
+                zoneList.innerHTML = '';
+                fromZone.innerHTML = '<option value="">Select zone...</option>';
+                toZone.innerHTML = '<option value="">Select zone...</option>';
+                
+                if (data.nodes && data.nodes.length > 0) {
+                    data.nodes.forEach(zone => {
+                        // Add to zone list
+                        const item = document.createElement('div');
+                        item.className = 'zone-list-item zone-enabled';
+                        item.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-center">
+                                <div>
+                                    <strong>${zone.zone_name}</strong><br>
+                                    <small class="text-muted">ID: ${zone.zone_id}</small>
+                                </div>
+                                <span class="badge bg-primary">P${zone.priority || 5}</span>
+                            </div>
+                        `;
+                        zoneList.appendChild(item);
+                        
+                        // Add to dropdowns
+                        fromZone.innerHTML += `<option value="${zone.zone_id}">${zone.zone_name}</option>`;
+                        toZone.innerHTML += `<option value="${zone.zone_id}">${zone.zone_name}</option>`;
+                    });
+                } else {
+                    zoneList.innerHTML = '<p class="text-muted text-center">No zones defined yet</p>';
+                }
+            } catch (error) {
+                console.error('Error loading zones:', error);
+                document.getElementById('zoneList').innerHTML = '<p class="text-danger">Error loading zones</p>';
+            }
+        }
+
+        async function refreshRoutes() {
+            try {
+                const response = await fetch('/api/routes/list');
+                const data = await response.json();
+                
+                const routeList = document.getElementById('routeList');
+                routeList.innerHTML = '';
+                
+                if (data.routes && data.routes.length > 0) {
+                    data.routes.forEach(route => {
+                        const card = document.createElement('div');
+                        card.className = 'route-card';
+                        card.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div>
+                                    <strong>${route.route_name || route.route_id}</strong>
+                                    <span class="badge bg-info route-type-badge ms-2">${route.route_type || 'UNKNOWN'}</span>
+                                    <br>
+                                    <small class="text-muted">
+                                        ${route.from_zone_id} → ${route.to_zone_id}
+                                        ${route.bidirectional ? '↔' : ''}
+                                    </small><br>
+                                    <small>
+                                        <i class="bi bi-rulers"></i> ${route.total_distance_meters?.toFixed(1) || 0}m |
+                                        <i class="bi bi-clock"></i> ${route.estimated_transit_time_seconds?.toFixed(0) || 0}s |
+                                        <i class="bi bi-speedometer"></i> ${route.max_speed_mps?.toFixed(1) || 0.5} m/s
+                                    </small>
+                                </div>
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteRoute('${route.route_id}')">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                        `;
+                        routeList.appendChild(card);
+                    });
+                } else {
+                    routeList.innerHTML = '<p class="text-muted text-center small">No routes recorded yet</p>';
+                }
+            } catch (error) {
+                console.error('Error loading routes:', error);
+                document.getElementById('routeList').innerHTML = '<p class="text-danger small">Error loading routes</p>';
+            }
+        }
+
+        async function refreshGraph() {
+            try {
+                const response = await fetch('/api/zones/graph');
+                const data = await response.json();
+                
+                drawGraph(data.nodes || [], data.edges || []);
+            } catch (error) {
+                console.error('Error loading graph:', error);
+            }
+        }
+
+        function drawGraph(nodes, edges) {
+            const canvas = document.getElementById('graph-canvas');
+            const ctx = canvas.getContext('2d');
+            
+            // Set canvas size
+            canvas.width = canvas.offsetWidth;
+            canvas.height = 500;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            if (nodes.length === 0) {
+                ctx.fillStyle = '#999';
+                ctx.font = '14px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText('No zones to display', canvas.width / 2, canvas.height / 2);
+                return;
+            }
+            
+            // Layout nodes in a circle
+            const centerX = canvas.width / 2;
+            const centerY = canvas.height / 2;
+            const radius = Math.min(canvas.width, canvas.height) * 0.35;
+            
+            const nodePositions = {};
+            nodes.forEach((node, i) => {
+                const angle = (i / nodes.length) * 2 * Math.PI - Math.PI / 2;
+                nodePositions[node.zone_id] = {
+                    x: centerX + radius * Math.cos(angle),
+                    y: centerY + radius * Math.sin(angle),
+                    name: node.zone_name
+                };
+            });
+            
+            // Draw edges
+            ctx.strokeStyle = '#17a2b8';
+            ctx.lineWidth = 2;
+            edges.forEach(edge => {
+                const from = nodePositions[edge.from_zone_id];
+                const to = nodePositions[edge.to_zone_id];
+                
+                if (from && to) {
+                    ctx.beginPath();
+                    ctx.moveTo(from.x, from.y);
+                    ctx.lineTo(to.x, to.y);
+                    ctx.stroke();
+                    
+                    // Draw arrow if not bidirectional
+                    if (!edge.bidirectional) {
+                        const angle = Math.atan2(to.y - from.y, to.x - from.x);
+                        const arrowSize = 10;
+                        ctx.beginPath();
+                        ctx.moveTo(to.x, to.y);
+                        ctx.lineTo(
+                            to.x - arrowSize * Math.cos(angle - Math.PI / 6),
+                            to.y - arrowSize * Math.sin(angle - Math.PI / 6)
+                        );
+                        ctx.lineTo(
+                            to.x - arrowSize * Math.cos(angle + Math.PI / 6),
+                            to.y - arrowSize * Math.sin(angle + Math.PI / 6)
+                        );
+                        ctx.closePath();
+                        ctx.fillStyle = '#17a2b8';
+                        ctx.fill();
+                    }
+                }
+            });
+            
+            // Draw nodes
+            Object.entries(nodePositions).forEach(([id, pos]) => {
+                // Draw circle
+                ctx.beginPath();
+                ctx.arc(pos.x, pos.y, 25, 0, 2 * Math.PI);
+                ctx.fillStyle = '#667eea';
+                ctx.fill();
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 3;
+                ctx.stroke();
+                
+                // Draw label
+                ctx.fillStyle = '#333';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center';
+                ctx.fillText(pos.name, pos.x, pos.y + 45);
+            });
+        }
+
+        async function startRecording() {
+            const fromZone = document.getElementById('fromZone').value;
+            const toZone = document.getElementById('toZone').value;
+            const routeName = document.getElementById('routeName').value;
+            const routeType = document.getElementById('routeType').value;
+            const maxSpeed = parseFloat(document.getElementById('maxSpeed').value);
+            const pathWidth = parseFloat(document.getElementById('pathWidth').value);
+            const bidirectional = document.getElementById('bidirectional').checked;
+            const mowDuringTransit = document.getElementById('mowDuringTransit').checked;
+            const tags = document.getElementById('routeTags').value.split(',').map(t => t.trim()).filter(t => t);
+            
+            if (!fromZone || !toZone) {
+                alert('Please select both from and to zones');
+                return;
+            }
+            
+            if (fromZone === toZone) {
+                alert('From and To zones must be different');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/routes/record/start', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        from_zone_id: fromZone,
+                        to_zone_id: toZone,
+                        route_name: routeName || `${fromZone}_to_${toZone}`,
+                        route_type: routeType,
+                        max_speed_mps: maxSpeed,
+                        path_width_meters: pathWidth,
+                        bidirectional: bidirectional,
+                        mow_during_transit: mowDuringTransit,
+                        tags: tags
+                    })
+                });
+                
+                if (response.ok) {
+                    isRecording = true;
+                    isPaused = false;
+                    document.getElementById('startBtn').style.display = 'none';
+                    document.getElementById('controlButtons').style.display = 'block';
+                    document.getElementById('recordingStats').style.display = 'block';
+                    document.getElementById('recordingStatus').classList.remove('d-none');
+                    document.getElementById('recordingStatus').classList.add('status-recording');
+                } else {
+                    alert('Failed to start recording');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error starting recording');
+            }
+        }
+
+        async function stopRecording() {
+            try {
+                const response = await fetch('/api/routes/record/stop', {method: 'POST'});
+                if (response.ok) {
+                    isRecording = false;
+                    isPaused = false;
+                    resetRecordingUI();
+                    refreshRoutes();
+                    refreshGraph();
+                    alert('Route saved successfully!');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error stopping recording');
+            }
+        }
+
+        async function pauseRecording() {
+            try {
+                const response = await fetch('/api/routes/record/pause', {method: 'POST'});
+                if (response.ok) {
+                    isPaused = true;
+                    document.getElementById('pauseBtn').style.display = 'none';
+                    document.getElementById('resumeBtn').style.display = 'block';
+                    document.getElementById('recordingStatus').classList.remove('status-recording');
+                    document.getElementById('recordingStatus').classList.add('status-paused');
+                    document.getElementById('statusText').textContent = 'Paused';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function resumeRecording() {
+            try {
+                const response = await fetch('/api/routes/record/resume', {method: 'POST'});
+                if (response.ok) {
+                    isPaused = false;
+                    document.getElementById('pauseBtn').style.display = 'block';
+                    document.getElementById('resumeBtn').style.display = 'none';
+                    document.getElementById('recordingStatus').classList.remove('status-paused');
+                    document.getElementById('recordingStatus').classList.add('status-recording');
+                    document.getElementById('statusText').textContent = 'Recording...';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        async function cancelRecording() {
+            if (!confirm('Are you sure you want to cancel? All recorded waypoints will be lost.')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/routes/record/cancel', {method: 'POST'});
+                if (response.ok) {
+                    isRecording = false;
+                    isPaused = false;
+                    resetRecordingUI();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        function resetRecordingUI() {
+            document.getElementById('startBtn').style.display = 'block';
+            document.getElementById('controlButtons').style.display = 'none';
+            document.getElementById('recordingStats').style.display = 'none';
+            document.getElementById('recordingStatus').classList.add('d-none');
+        }
+
+        async function deleteRoute(routeId) {
+            if (!confirm('Delete this route?')) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/routes/delete/${routeId}`, {method: 'DELETE'});
+                if (response.ok) {
+                    refreshRoutes();
+                    refreshGraph();
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Error deleting route');
+            }
+        }
+
+        async function updateStatus() {
+            try {
+                const response = await fetch('/api/routes/status');
+                const data = await response.json();
+                
+                // Update recording stats
+                if (isRecording && data.waypoints_collected !== undefined) {
+                    document.getElementById('statsWaypoints').textContent = data.waypoints_collected;
+                    document.getElementById('waypointCount').textContent = data.waypoints_collected;
+                    document.getElementById('statsDistance').textContent = data.distance_meters.toFixed(1);
+                    document.getElementById('distanceCount').textContent = data.distance_meters.toFixed(1);
+                    document.getElementById('statsDuration').textContent = Math.floor(data.recording_duration_seconds || 0);
+                }
+                
+                // Update GPS status
+                if (data.current_gps_lat !== undefined) {
+                    document.getElementById('gpsPosition').textContent = 
+                        `Lat: ${data.current_gps_lat.toFixed(6)}, Lon: ${data.current_gps_lon.toFixed(6)}`;
+                }
+                
+                if (data.current_gps_quality !== undefined) {
+                    const quality = data.current_gps_quality;
+                    const hdopEl = document.getElementById('hdopValue');
+                    const qualityEl = document.getElementById('gpsQuality');
+                    const statsQuality = document.getElementById('statsGPSQuality');
+                    
+                    hdopEl.textContent = quality.toFixed(2);
+                    statsQuality.textContent = quality.toFixed(2);
+                    
+                    if (quality < 2.0) {
+                        qualityEl.className = 'gps-quality-good';
+                        qualityEl.innerHTML = '<i class="bi bi-wifi"></i> Good';
+                    } else if (quality < 5.0) {
+                        qualityEl.className = 'gps-quality-medium';
+                        qualityEl.innerHTML = '<i class="bi bi-wifi"></i> Medium';
+                    } else {
+                        qualityEl.className = 'gps-quality-poor';
+                        qualityEl.innerHTML = '<i class="bi bi-wifi-off"></i> Poor';
+                    }
+                }
+            } catch (error) {
+                // Silently fail - status updates are not critical
+            }
+        }
+    </script>
+</body>
+</html>

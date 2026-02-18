@@ -28,6 +28,7 @@ class StereoCameraNode(Node):
         self.declare_parameter('use_gstreamer', True)
         self.declare_parameter('flip_method', 0)  # 0=none, 2=rotate-180, etc.
         self.declare_parameter('jpeg_quality', 80)  # Quality for compressed images
+        self.declare_parameter('publish_raw', True)  # Publish raw images (disable for low-resource systems)
         
         # Get parameters
         self.left_camera_id = self.get_parameter('left_camera_id').value
@@ -39,6 +40,7 @@ class StereoCameraNode(Node):
         self.use_gstreamer = self.get_parameter('use_gstreamer').value
         self.flip_method = self.get_parameter('flip_method').value
         self.jpeg_quality = self.get_parameter('jpeg_quality').value
+        self.publish_raw = self.get_parameter('publish_raw').value
         
         # Create CV Bridge
         self.bridge = CvBridge()
@@ -63,110 +65,154 @@ class StereoCameraNode(Node):
         self.timer = self.create_timer(timer_period, self.capture_and_publish)
         
         self.get_logger().info(f'Stereo Camera Node started')
-        self.get_logger().info(f'Left camera: {self.left_camera_id}, Right camera: {self.right_camera_id}')
+        self.get_logger().info(f'Left camera ID: {self.left_camera_id}, Right camera ID: {self.right_camera_id}')
         self.get_logger().info(f'Resolution: {self.width}x{self.height} @ {self.fps} FPS')
-        self.get_logger().info(f'JPEG quality for compressed: {self.jpeg_quality}%')
+        self.get_logger().info(f'Backend: {"GStreamer (HW accel)" if self.use_gstreamer else "V4L2"}')
+        self.get_logger().info(f'Publishing: {"Raw + Compressed" if self.publish_raw else "Compressed only"}')
+        self.get_logger().info(f'JPEG quality: {self.jpeg_quality}%')
     
-    def gstreamer_pipeline(self, camera_id, flip_method=0):
+    def gstreamer_pipeline(self, sensor_id, flip_method=0):
         """
         Create GStreamer pipeline for CSI cameras on Jetson
-        Optimized for hardware acceleration
+        Uses hardware-accelerated nvarguscamerasrc + nvvidconv for efficient processing
+        
+        sensor-id: 0 or 1 for IMX219 cameras on Jetson Orin Nano
         """
         return (
-            f'nvarguscamerasrc sensor-id={camera_id} ! '
+            f'nvarguscamerasrc sensor-id={sensor_id} ! '
             f'video/x-raw(memory:NVMM), width=(int){self.width}, height=(int){self.height}, '
             f'format=(string)NV12, framerate=(fraction){self.fps}/1 ! '
             f'nvvidconv flip-method={flip_method} ! '
             f'video/x-raw, width=(int){self.width}, height=(int){self.height}, format=(string)BGRx ! '
             f'videoconvert ! '
             f'video/x-raw, format=(string)BGR ! '
-            f'appsink drop=1'
+            f'appsink drop=true max-buffers=1'
         )
     
     def init_cameras(self):
-        """Initialize camera captures"""
+        """Initialize camera captures using GStreamer or V4L2"""
         try:
-            # V4L2 access for CSI or USB cameras (works better in Docker)
-            self.get_logger().info('Opening cameras with V4L2...')
-            
-            # Open cameras with V4L2 backend
-            self.left_cap = cv2.VideoCapture(f'/dev/video{self.left_camera_id}', cv2.CAP_V4L2)
-            self.right_cap = cv2.VideoCapture(f'/dev/video{self.right_camera_id}', cv2.CAP_V4L2)
-            
-            if self.left_cap.isOpened():
-                # Try different FOURCC formats for Jetson CSI cameras
-                # First try raw formats
-                formats_to_try = [
-                    cv2.VideoWriter_fourcc('R', 'G', '1', '0'),  # RG10 - Bayer format
-                    cv2.VideoWriter_fourcc('Y', 'U', 'Y', 'V'),  # YUYV
-                    cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),  # MJPEG
-                ]
+            if self.use_gstreamer:
+                # Use hardware-accelerated GStreamer for Jetson CSI cameras
+                self.get_logger().info('Opening cameras with GStreamer (hardware-accelerated)...')
                 
-                success = False
-                for fourcc in formats_to_try:
-                    self.left_cap.set(cv2.CAP_PROP_FOURCC, fourcc)
-                    self.left_cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                    self.left_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-                    self.left_cap.set(cv2.CAP_PROP_FPS, self.fps)
-                    
-                    # Test if we can read a frame
-                    ret, _ = self.left_cap.read()
-                    if ret:
-                        self.get_logger().info(f'Left camera working with FOURCC: {fourcc}')
-                        success = True
-                        break
-                    
-                if not success:
-                    self.get_logger().warn('Left camera opened but cannot read frames')
-            
-            if self.right_cap.isOpened():
-                # Try different FOURCC formats for Jetson CSI cameras
-                formats_to_try = [
-                    cv2.VideoWriter_fourcc('R', 'G', '1', '0'),  # RG10 - Bayer format
-                    cv2.VideoWriter_fourcc('Y', 'U', 'Y', 'V'),  # YUYV
-                    cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),  # MJPEG
-                ]
+                # Create GStreamer pipelines for both cameras
+                left_pipeline = self.gstreamer_pipeline(
+                    sensor_id=self.left_camera_id,
+                    flip_method=self.flip_method
+                )
+                right_pipeline = self.gstreamer_pipeline(
+                    sensor_id=self.right_camera_id,
+                    flip_method=self.flip_method
+                )
                 
-                success = False
-                for fourcc in formats_to_try:
-                    self.right_cap.set(cv2.CAP_PROP_FOURCC, fourcc)
-                    self.right_cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                    self.right_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-                    self.right_cap.set(cv2.CAP_PROP_FPS, self.fps)
+                self.get_logger().info(f'Left pipeline: {left_pipeline}')
+                self.get_logger().info(f'Right pipeline: {right_pipeline}')
+                
+                # Open cameras with GStreamer backend
+                self.left_cap = cv2.VideoCapture(left_pipeline, cv2.CAP_GSTREAMER)
+                self.right_cap = cv2.VideoCapture(right_pipeline, cv2.CAP_GSTREAMER)
+                
+                # GStreamer doesn't need format negotiation - pipeline handles it
+                left_ok = self.left_cap and self.left_cap.isOpened()
+                right_ok = self.right_cap and self.right_cap.isOpened()
+                
+                if left_ok:
+                    self.get_logger().info('Left camera opened with GStreamer')
+                else:
+                    self.get_logger().error('Failed to open left camera with GStreamer')
                     
-                    # Test if we can read a frame
-                    ret, _ = self.right_cap.read()
-                    if ret:
-                        self.get_logger().info(f'Right camera working with FOURCC: {fourcc}')
-                        success = True
-                        break
+                if right_ok:
+                    self.get_logger().info('Right camera opened with GStreamer')
+                else:
+                    self.get_logger().error('Failed to open right camera with GStreamer')
+                
+            else:
+                # Fallback to V4L2 for USB cameras or debugging
+                self.get_logger().info('Opening cameras with V4L2...')
+                
+                # Open cameras with V4L2 backend
+                self.left_cap = cv2.VideoCapture(f'/dev/video{self.left_camera_id}', cv2.CAP_V4L2)
+                self.right_cap = cv2.VideoCapture(f'/dev/video{self.right_camera_id}', cv2.CAP_V4L2)
+                
+                if self.left_cap.isOpened():
+                    # Try different FOURCC formats for compatibility
+                    formats_to_try = [
+                        cv2.VideoWriter_fourcc('R', 'G', '1', '0'),  # RG10 - Bayer format
+                        cv2.VideoWriter_fourcc('Y', 'U', 'Y', 'V'),  # YUYV
+                        cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),  # MJPEG
+                    ]
                     
-                if not success:
-                    self.get_logger().warn('Right camera opened but cannot read frames')
+                    success = False
+                    for fourcc in formats_to_try:
+                        self.left_cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+                        self.left_cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                        self.left_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                        self.left_cap.set(cv2.CAP_PROP_FPS, self.fps)
+                        
+                        # Test if we can read a frame
+                        ret, _ = self.left_cap.read()
+                        if ret:
+                            self.get_logger().info(f'Left camera working with FOURCC: {fourcc}')
+                            success = True
+                            break
+                        
+                    if not success:
+                        self.get_logger().warn('Left camera opened but cannot read frames')
+                
+                if self.right_cap.isOpened():
+                    # Try different FOURCC formats
+                    formats_to_try = [
+                        cv2.VideoWriter_fourcc('R', 'G', '1', '0'),  # RG10 - Bayer format
+                        cv2.VideoWriter_fourcc('Y', 'U', 'Y', 'V'),  # YUYV
+                        cv2.VideoWriter_fourcc('M', 'J', 'P', 'G'),  # MJPEG
+                    ]
+                    
+                    success = False
+                    for fourcc in formats_to_try:
+                        self.right_cap.set(cv2.CAP_PROP_FOURCC, fourcc)
+                        self.right_cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                        self.right_cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                        self.right_cap.set(cv2.CAP_PROP_FPS, self.fps)
+                        
+                        # Test if we can read a frame
+                        ret, _ = self.right_cap.read()
+                        if ret:
+                            self.get_logger().info(f'Right camera working with FOURCC: {fourcc}')
+                            success = True
+                            break
+                        
+                    if not success:
+                        self.get_logger().warn('Right camera opened but cannot read frames')
             
-            # Report status
+            # Report final status
             left_ok = self.left_cap and self.left_cap.isOpened()
             right_ok = self.right_cap and self.right_cap.isOpened()
             
             if left_ok and right_ok:
-                self.get_logger().info('Both cameras opened successfully!')
+                self.get_logger().info('✓ Both cameras opened successfully!')
             elif left_ok:
-                self.get_logger().warn('Only left camera opened - right camera not available')
+                self.get_logger().warn('⚠ Only left camera opened - right camera not available')
             elif right_ok:
-                self.get_logger().warn('Only right camera opened - left camera not available')
+                self.get_logger().warn('⚠ Only right camera opened - left camera not available')
             else:
-                self.get_logger().error('Failed to open cameras!')
-                self.get_logger().error('Try: v4l2-ctl --list-devices to check camera availability')
+                self.get_logger().error('✗ Failed to open cameras!')
+                if self.use_gstreamer:
+                    self.get_logger().error('Try: gst-launch-1.0 nvarguscamerasrc sensor-id=0 ! fakesink')
+                else:
+                    self.get_logger().error('Try: v4l2-ctl --list-devices')
                 
-            if left_ok:
-                # Read actual settings
+            if left_ok and not self.use_gstreamer:
+                # Read actual V4L2 settings (GStreamer handles this internally)
                 actual_width = self.left_cap.get(cv2.CAP_PROP_FRAME_WIDTH)
                 actual_height = self.left_cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
                 actual_fps = self.left_cap.get(cv2.CAP_PROP_FPS)
-                self.get_logger().info(f'Camera settings: {int(actual_width)}x{int(actual_height)} @ {actual_fps:.1f} fps')
+                self.get_logger().info(f'V4L2 settings: {int(actual_width)}x{int(actual_height)} @ {actual_fps:.1f} fps')
                 
         except Exception as e:
             self.get_logger().error(f'Error initializing cameras: {e}')
+            import traceback
+            self.get_logger().error(traceback.format_exc())
     
     def create_camera_info(self, header):
         """Create basic CameraInfo message"""
@@ -253,12 +299,13 @@ class StereoCameraNode(Node):
                 header.stamp = timestamp
                 header.frame_id = self.frame_id
                 
-                # Convert and publish left raw image
-                left_msg = self.bridge.cv2_to_imgmsg(frame_left, encoding='bgr8')
-                left_msg.header = header
-                self.left_image_pub.publish(left_msg)
+                # Publish left raw image ONLY if enabled
+                if self.publish_raw:
+                    left_msg = self.bridge.cv2_to_imgmsg(frame_left, encoding='bgr8')
+                    left_msg.header = header
+                    self.left_image_pub.publish(left_msg)
                 
-                # Publish left compressed image
+                # Always publish compressed image (efficient)
                 left_compressed = self.create_compressed_image(frame_left, header)
                 self.left_compressed_pub.publish(left_compressed)
                 
@@ -275,12 +322,13 @@ class StereoCameraNode(Node):
                 header.stamp = timestamp
                 header.frame_id = self.frame_id
                 
-                # Convert and publish right raw image
-                right_msg = self.bridge.cv2_to_imgmsg(frame_right, encoding='bgr8')
-                right_msg.header = header
-                self.right_image_pub.publish(right_msg)
+                # Publish right raw image ONLY if enabled
+                if self.publish_raw:
+                    right_msg = self.bridge.cv2_to_imgmsg(frame_right, encoding='bgr8')
+                    right_msg.header = header
+                    self.right_image_pub.publish(right_msg)
                 
-                # Publish right compressed image
+                # Always publish compressed image (efficient)
                 right_compressed = self.create_compressed_image(frame_right, header)
                 self.right_compressed_pub.publish(right_compressed)
                 

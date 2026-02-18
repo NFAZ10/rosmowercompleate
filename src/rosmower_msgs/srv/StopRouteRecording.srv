@@ -1,0 +1,10 @@
+# Request
+string route_id
+
+---
+# Response
+bool success
+string saved_path
+string message
+float32 total_distance_meters
+int32 waypoints_count

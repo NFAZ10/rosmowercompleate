@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zone Manager - ROS Mower</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        
+        .container {
+            max-width: 1600px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 2.5em;
+        }
+        
+        .subtitle {
+            color: #666;
+            margin-bottom: 30px;
+            font-size: 1.1em;
+        }
+        
+        .main-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            gap: 30px;
+            margin-top: 20px;
+        }
+        
+        .sidebar {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 10px;
+            height: fit-content;
+        }
+        
+        .canvas-container {
+            background: #fff;
+            border: 2px solid #ddd;
+            border-radius: 10px;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        #zoneCanvas {
+            display: block;
+            cursor: crosshair;
+            background: 
+                repeating-linear-gradient(
+                    0deg,
+                    #f0f0f0,
+                    #f0f0f0 1px,
+                    transparent 1px,
+                    transparent 20px
+                ),
+                repeating-linear-gradient(
+                    90deg,
+                    #f0f0f0,
+                    #f0f0f0 1px,
+                    transparent 1px,
+                    transparent 20px
+                );
+        }
+        
+        .zone-list {
+            margin-bottom: 20px;
+        }
+        
+        .zone-item {
+            background: white;
+            padding: 12px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        
+        .zone-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .zone-item.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .zone-item h3 {
+            font-size: 1.1em;
+            margin-bottom: 5px;
+        }
+        
+        .zone-item .details {
+            font-size: 0.85em;
+            opacity: 0.8;
+        }
+        
+        .controls {
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        
+        .control-group {
+            margin-bottom: 15px;
+        }
+        
+        label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        input[type="text"],
+        input[type="number"],
+        select {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+        
+        input[type="text"]:focus,
+        input[type="number"]:focus,
+        select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+        
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        input[type="checkbox"] {
+            width: 20px;
+            height: 20px;
+            cursor: pointer;
+        }
+        
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+            margin-top: 10px;
+        }
+        
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background: #5568d3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        
+        .btn-success {
+            background: #10b981;
+            color: white;
+        }
+        
+        .btn-success:hover {
+            background: #059669;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(16, 185, 129, 0.4);
+        }
+        
+        .btn-danger {
+            background: #ef4444;
+            color: white;
+        }
+        
+        .btn-danger:hover {
+            background: #dc2626;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(239, 68, 68, 0.4);
+        }
+        
+        .btn-secondary {
+            background: #6b7280;
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background: #4b5563;
+        }
+        
+        .status-bar {
+            background: #f0f4f8;
+            padding: 15px;
+            border-radius: 8px;
+            margin-top: 20px;
+            font-size: 0.9em;
+        }
+        
+        .status-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            margin-right: 8px;
+        }
+        
+        .status-online {
+            background: #10b981;
+            animation: pulse 2s infinite;
+        }
+        
+        .status-offline {
+            background: #ef4444;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+        
+        .instructions {
+            background: #fff3cd;
+            border-left: 4px solid #ffc107;
+            padding: 12px;
+            margin-bottom: 20px;
+            border-radius: 6px;
+            font-size: 0.9em;
+        }
+        
+        .info-box {
+            background: #e3f2fd;
+            border-left: 4px solid #2196f3;
+            padding: 12px;
+            margin-top: 15px;
+            border-radius: 6px;
+            font-size: 0.85em;
+        }
+        
+        .vertex-list {
+            max-height: 150px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 6px;
+            margin-top: 10px;
+            font-size: 0.85em;
+        }
+        
+        .vertex-item {
+            padding: 5px;
+            border-bottom: 1px solid #dee2e6;
+        }
+        
+        .nav-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+        
+        .nav-buttons .btn {
+            margin-top: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🗺️ Zone Manager</h1>
+        <p class="subtitle">Define and manage mowing zones for autonomous operation</p>
+        
+        <div class="nav-buttons">
+            <button class="btn btn-secondary" onclick="location.href='/'">← Back to Control</button>
+            <button class="btn btn-secondary" onclick="location.href='/status'">📊 Status</button>
+        </div>
+        
+        <div class="instructions">
+            <strong>📋 Instructions:</strong> Click on the canvas to add vertices for your zone. 
+            Double-click or press Enter to close the polygon. Click "Save Zone" to persist it.
+        </div>
+        
+        <div class="main-grid">
+            <!-- Sidebar -->
+            <div class="sidebar">
+                <h2 style="margin-bottom: 15px;">Zones</h2>
+                <div class="zone-list" id="zoneList">
+                    <p style="color: #999;">Loading zones...</p>
+                </div>
+                
+                <button class="btn btn-primary" onclick="newZone()">➕ New Zone</button>
+                
+                <div class="controls" style="margin-top: 20px;">
+                    <h3 style="margin-bottom: 15px;">Zone Properties</h3>
+                    
+                    <div class="control-group">
+                        <label>Zone ID</label>
+                        <input type="text" id="zoneId" placeholder="e.g., front_yard">
+                    </div>
+                    
+                    <div class="control-group">
+                        <label>Zone Name</label>
+                        <input type="text" id="zoneName" placeholder="e.g., Front Yard">
+                    </div>
+                    
+                    <div class="control-group">
+                        <label>Priority (0-255)</label>
+                        <input type="number" id="zonePriority" min="0" max="255" value="5">
+                    </div>
+                    
+                    <div class="control-group">
+                        <div class="checkbox-group">
+                            <input type="checkbox" id="zoneEnabled" checked>
+                            <label for="zoneEnabled" style="margin: 0;">Zone Enabled</label>
+                        </div>
+                    </div>
+                    
+                    <div class="vertex-list" id="vertexList">
+                        <strong>Vertices: </strong><span id="vertexCount">0</span>
+                        <div id="vertexItems"></div>
+                    </div>
+                    
+                    <button class="btn btn-success" onclick="saveZone()">💾 Save Zone</button>
+                    <button class="btn btn-danger" onclick="deleteZone()">🗑️ Delete Zone</button>
+                    <button class="btn btn-secondary" onclick="clearCanvas()">🔄 Clear Canvas</button>
+                    
+                    <div class="info-box">
+                        <strong>🎯 Tips:</strong><br>
+                        • Click to add vertices<br>
+                        • Double-click to finish<br>
+                        • Right-click to undo<br>
+                        • Zoom with mouse wheel
+                    </div>
+                </div>
+                
+                <div class="status-bar">
+                    <div>
+                        <span class="status-indicator" id="statusIndicator"></span>
+                        <span id="statusText">Connecting...</span>
+                    </div>
+                    <div style="margin-top: 10px; font-size: 0.85em; color: #666;">
+                        <span id="zoneCount">0</span> zones loaded
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Canvas -->
+            <div class="canvas-container">
+                <canvas id="zoneCanvas" width="1000" height="700"></canvas>
+            </div>
+        </div>
+    </div>
+    
+    <script>
+        // Canvas and drawing state
+        const canvas = document.getElementById('zoneCanvas');
+        const ctx = canvas.getContext('2d');
+        let vertices = [];
+        let zones = [];
+        let selectedZone = null;
+        let isDrawing = false;
+        let scale = 10; // pixels per meter
+        let offset = { x: 500, y: 350 }; // center of canvas
+        
+        // Initialize
+        loadZones();
+        drawCanvas();
+        
+        // Canvas click handler
+        canvas.addEventListener('click', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+            
+            // Convert to world coordinates (meters)
+            const worldX = (x - offset.x) / scale;
+            const worldY = -(y - offset.y) / scale; // Flip Y axis
+            
+            vertices.push({ x: worldX, y: worldY });
+            isDrawing = true;
+            
+            updateVertexList();
+            drawCanvas();
+        });
+        
+        // Canvas double-click to finish polygon
+        canvas.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            if (vertices.length >= 3) {
+                // Remove the last vertex added by the click event
+                vertices.pop();
+                isDrawing = false;
+                drawCanvas();
+            }
+        });
+        
+        // Right-click to undo
+        canvas.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            if (vertices.length > 0) {
+                vertices.pop();
+                updateVertexList();
+                drawCanvas();
+            }
+        });
+        
+        // Mouse wheel to zoom
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? 0.9 : 1.1;
+            scale *= delta;
+            scale = Math.max(1, Math.min(50, scale)); // Limit scale
+            drawCanvas();
+        });
+        
+        // Draw the canvas
+        function drawCanvas() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw origin
+            drawOrigin();
+            
+            // Draw all zones
+            zones.forEach(zone => {
+                if (zone.id !== selectedZone?.id) {
+                    drawZone(zone, '#ddd', '#999');
+                }
+            });
+            
+            // Draw selected zone
+            if (selectedZone) {
+                drawZone(selectedZone, '#667eea', '#5568d3');
+            }
+            
+            // Draw current polygon being drawn
+            if (vertices.length > 0) {
+                drawPolygon(vertices, '#10b981', '#059669', true);
+            }
+        }
+        
+        function drawOrigin() {
+            ctx.save();
+            ctx.strokeStyle = '#ccc';
+            ctx.lineWidth = 1;
+            
+            // X axis
+            ctx.beginPath();
+            ctx.moveTo(0, offset.y);
+            ctx.lineTo(canvas.width, offset.y);
+            ctx.stroke();
+            
+            // Y axis
+            ctx.beginPath();
+            ctx.moveTo(offset.x, 0);
+            ctx.lineTo(offset.x, canvas.height);
+            ctx.stroke();
+            
+            // Origin label
+            ctx.fillStyle = '#666';
+            ctx.font = '12px sans-serif';
+            ctx.fillText('(0,0)', offset.x + 5, offset.y - 5);
+            
+            ctx.restore();
+        }
+        
+        function drawZone(zone, fillColor, strokeColor) {
+            if (!zone.polygon || !zone.polygon.polygon || !zone.polygon.polygon.points) {
+                return;
+            }
+            
+            const points = zone.polygon.polygon.points.map(p => ({
+                x: p.x,
+                y: p.y
+            }));
+            
+            drawPolygon(points, fillColor, strokeColor, false);
+            
+            // Draw zone label
+            if (points.length > 0) {
+                const centerX = points.reduce((sum, p) => sum + p.x, 0) / points.length;
+                const centerY = points.reduce((sum, p) => sum + p.y, 0) / points.length;
+                
+                const screenX = centerX * scale + offset.x;
+                const screenY = -centerY * scale + offset.y;
+                
+                ctx.fillStyle = strokeColor;
+                ctx.font = 'bold 14px sans-serif';
+                ctx.textAlign = 'center';
+                ctx.fillText(zone.name, screenX, screenY);
+            }
+        }
+        
+        function drawPolygon(points, fillColor, strokeColor, showVertices) {
+            if (points.length === 0) return;
+            
+            ctx.save();
+            ctx.fillStyle = fillColor + '40'; // Add transparency
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 2;
+            
+            ctx.beginPath();
+            const firstPoint = worldToScreen(points[0]);
+            ctx.moveTo(firstPoint.x, firstPoint.y);
+            
+            for (let i = 1; i < points.length; i++) {
+                const p = worldToScreen(points[i]);
+                ctx.lineTo(p.x, p.y);
+            }
+            
+            if (!showVertices || points.length >= 3) {
+                ctx.closePath();
+                ctx.fill();
+            }
+            
+            ctx.stroke();
+            
+            // Draw vertices
+            if (showVertices) {
+                ctx.fillStyle = strokeColor;
+                points.forEach(p => {
+                    const screen = worldToScreen(p);
+                    ctx.beginPath();
+                    ctx.arc(screen.x, screen.y, 5, 0, Math.PI * 2);
+                    ctx.fill();
+                });
+            }
+            
+            ctx.restore();
+        }
+        
+        function worldToScreen(point) {
+            return {
+                x: point.x * scale + offset.x,
+                y: -point.y * scale + offset.y
+            };
+        }
+        
+        function updateVertexList() {
+            document.getElementById('vertexCount').textContent = vertices.length;
+            const vertexItems = document.getElementById('vertexItems');
+            vertexItems.innerHTML = vertices.map((v, i) => 
+                `<div class="vertex-item">${i + 1}. (${v.x.toFixed(2)}, ${v.y.toFixed(2)})</div>`
+            ).join('');
+        }
+        
+        async function loadZones() {
+            try {
+                const response = await fetch('/api/zones');
+                if (response.ok) {
+                    const data = await response.json();
+                    zones = data.zones || [];
+                    updateZoneList();
+                    updateStatus(true);
+                    drawCanvas();
+                } else {
+                    updateStatus(false);
+                }
+            } catch (error) {
+                console.error('Failed to load zones:', error);
+                updateStatus(false);
+            }
+        }
+        
+        function updateZoneList() {
+            const zoneList = document.getElementById('zoneList');
+            document.getElementById('zoneCount').textContent = zones.length;
+            
+            if (zones.length === 0) {
+                zoneList.innerHTML = '<p style="color: #999;">No zones yet. Create one!</p>';
+                return;
+            }
+            
+            zoneList.innerHTML = zones.map(zone => `
+                <div class="zone-item ${selectedZone?.id === zone.id ? 'active' : ''}" 
+                     onclick="selectZone('${zone.id}')">
+                    <h3>${zone.name}</h3>
+                    <div class="details">
+                        Priority: ${zone.priority} | 
+                        ${zone.enabled ? '✅ Enabled' : '❌ Disabled'} | 
+                        ${zone.polygon?.polygon?.points?.length || 0} vertices
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+        function selectZone(zoneId) {
+            selectedZone = zones.find(z => z.id === zoneId);
+            if (selectedZone) {
+                document.getElementById('zoneId').value = selectedZone.id;
+                document.getElementById('zoneName').value = selectedZone.name;
+                document.getElementById('zonePriority').value = selectedZone.priority;
+                document.getElementById('zoneEnabled').checked = selectedZone.enabled;
+                
+                // Load vertices for editing
+                if (selectedZone.polygon?.polygon?.points) {
+                    vertices = selectedZone.polygon.polygon.points.map(p => ({
+                        x: p.x,
+                        y: p.y
+                    }));
+                    updateVertexList();
+                }
+            }
+            updateZoneList();
+            drawCanvas();
+        }
+        
+        function newZone() {
+            selectedZone = null;
+            vertices = [];
+            document.getElementById('zoneId').value = '';
+            document.getElementById('zoneName').value = '';
+            document.getElementById('zonePriority').value = '5';
+            document.getElementById('zoneEnabled').checked = true;
+            updateVertexList();
+            updateZoneList();
+            drawCanvas();
+        }
+        
+        async function saveZone() {
+            const zoneId = document.getElementById('zoneId').value.trim();
+            const zoneName = document.getElementById('zoneName').value.trim();
+            const priority = parseInt(document.getElementById('zonePriority').value);
+            const enabled = document.getElementById('zoneEnabled').checked;
+            
+            if (!zoneId || !zoneName) {
+                alert('Please provide both Zone ID and Zone Name');
+                return;
+            }
+            
+            if (vertices.length < 3) {
+                alert('Zone must have at least 3 vertices');
+                return;
+            }
+            
+            const zone = {
+                id: zoneId,
+                name: zoneName,
+                priority: priority,
+                enabled: enabled,
+                coverage_percent: 0.0,
+                frame_id: 'map',
+                vertices: vertices.map(v => ({ x: v.x, y: v.y, z: 0.0 }))
+            };
+            
+            try {
+                const response = await fetch('/api/zones/save', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(zone)
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('✅ Zone saved successfully!');
+                    await loadZones();
+                    newZone();
+                } else {
+                    alert('❌ Failed to save zone: ' + result.message);
+                }
+            } catch (error) {
+                alert('❌ Error saving zone: ' + error.message);
+            }
+        }
+        
+        async function deleteZone() {
+            if (!selectedZone) {
+                alert('Please select a zone to delete');
+                return;
+            }
+            
+            if (!confirm(`Delete zone "${selectedZone.name}"?`)) {
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/zones/delete/${selectedZone.id}`, {
+                    method: 'DELETE'
+                });
+                
+                const result = await response.json();
+                if (result.success) {
+                    alert('✅ Zone deleted successfully!');
+                    await loadZones();
+                    newZone();
+                } else {
+                    alert('❌ Failed to delete zone: ' + result.message);
+                }
+            } catch (error) {
+                alert('❌ Error deleting zone: ' + error.message);
+            }
+        }
+        
+        function clearCanvas() {
+            if (confirm('Clear current drawing?')) {
+                vertices = [];
+                isDrawing = false;
+                updateVertexList();
+                drawCanvas();
+            }
+        }
+        
+        function updateStatus(online) {
+            const indicator = document.getElementById('statusIndicator');
+            const text = document.getElementById('statusText');
+            
+            if (online) {
+                indicator.className = 'status-indicator status-online';
+                text.textContent = 'Connected to ROS';
+            } else {
+                indicator.className = 'status-indicator status-offline';
+                text.textContent = 'Disconnected';
+            }
+        }
+        
+        // Refresh zones every 5 seconds
+        setInterval(loadZones, 5000);
+        
+        // Handle Enter key to close polygon
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && vertices.length >= 3) {
+                isDrawing = false;
+                drawCanvas();
+            }
+        });
+    </script>
+</body>
+</html>

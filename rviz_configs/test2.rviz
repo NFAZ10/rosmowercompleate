@@ -4,15 +4,26 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
+        - /RobotModel1
         - /Map1
       Splitter Ratio: 0.5
-    Tree Height: 105
+    Tree Height: 796
   - Class: rviz_common/Tool Properties
-    Expanded: ~
+    Expanded:
+      - /Interact1
+      - /Measure1
+      - /Publish Point1
+      - /2D Goal Pose1
+      - /2D Pose Estimate1
     Name: Tool Properties
     Splitter Ratio: 0.5
   - Class: slam_toolbox::SlamToolboxPlugin
     Name: SlamToolboxPlugin
+  - Class: rviz_common/Views
+    Expanded:
+      - /Current View1
+    Name: Views
+    Splitter Ratio: 0.5
 Visualization Manager:
   Class: ""
   Displays:
@@ -49,9 +60,9 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 47
+      Max Intensity: 52
       Min Color: 0; 0; 0
-      Min Intensity: 47
+      Min Intensity: 0
       Name: LaserScan
       Position Transformer: XYZ
       Selectable: true
@@ -94,31 +105,66 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        camera_link:
+          Value: true
+        caster_swivel:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        camera_link_optical:
-          Alpha: 1
-          Show Axes: false
-          Show Trail: false
         caster_wheel:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        chassis:
+        front_cross:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
-        laser_frame:
+        left_camera_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        left_camera_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        left_rail:
           Alpha: 1
           Show Axes: false
           Show Trail: false
           Value: true
         left_wheel:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        lidar_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        middle_cross:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        rear_cross:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        right_camera_link:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+          Value: true
+        right_camera_optical_frame:
+          Alpha: 1
+          Show Axes: false
+          Show Trail: false
+        right_rail:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -202,7 +248,39 @@ Visualization Manager:
     Fixed Frame: base_link
     Frame Rate: 30
   Name: root
-  Tools: ~
+  Tools:
+    - Class: rviz_default_plugins/FocusCamera
+    - Class: rviz_default_plugins/Interact
+      Hide Inactive Objects: true
+    - Class: rviz_default_plugins/Measure
+      Line color: 128; 128; 0
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/PublishPoint
+      Single click: true
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /clicked_point
+    - Class: rviz_default_plugins/Select
+    - Class: rviz_default_plugins/SetGoal
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: goal_pose
+    - Class: rviz_default_plugins/SetInitialPose
+      Covariance x: 0.25
+      Covariance y: 0.25
+      Covariance yaw: 0.06853891909122467
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: initialpose
   Transformation:
     Current:
       Class: rviz_default_plugins/TF
@@ -210,37 +288,39 @@ Visualization Manager:
   Views:
     Current:
       Class: rviz_default_plugins/Orbit
-      Distance: 10
+      Distance: 1.0102218389511108
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
       Focal Point:
-        X: 0
-        Y: 0
-        Z: 0
-      Focal Shape Fixed Size: true
+        X: 4.415855407714844
+        Y: 4.527624130249023
+        Z: 6.39565372467041
+      Focal Shape Fixed Size: false
       Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7853981852531433
+      Pitch: 0.7322975993156433
       Target Frame: <Fixed Frame>
       Value: Orbit (rviz_default_plugins)
-      Yaw: 0.7853981852531433
+      Yaw: 0.6800007224082947
     Saved: ~
 Window Geometry:
   Displays:
     collapsed: false
-  Height: 754
+  Height: 1011
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000100000000000001e70000029cfc0200000004fb000000100044006900730070006c006100790073010000003b000000ea000000c700fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007300000001080000005c0000005c00fffffffb0000000a0049006d00610067006501000002b4000000c50000000000000000fb000000220053006c0061006d0054006f006f006c0062006f00780050006c007500670069006e010000012b000001ac0000016d00ffffff0000037e0000029c00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000200000000000001d20000039dfc0200000004fb000000100044006900730070006c006100790073010000003b0000039d000000c700fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007300000001080000005c0000005c00fffffffb0000000a0049006d00610067006501000002b4000000c50000000000000000fb000000220053006c0061006d0054006f006f006c0062006f00780050006c007500670069006e0000000188000002550000016d00ffffff000000010000019b0000039dfc0200000001fb0000000a00560069006500770073010000003b0000039d000000a000ffffff000004070000039d00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   SlamToolboxPlugin:
     collapsed: false
   Tool Properties:
     collapsed: false
-  Width: 1387
-  X: 584
-  Y: 163
+  Views:
+    collapsed: false
+  Width: 1920
+  X: 0
+  Y: 32

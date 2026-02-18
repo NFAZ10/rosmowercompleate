@@ -1,0 +1,51 @@
+# Camera Configuration Presets for Jetson Orin Nano
+# Use these to balance quality vs. performance based on your needs
+
+# MINIMAL - For testing or very resource-constrained scenarios
+# Lowest CPU/memory usage, compressed only
+minimal:
+  width: 320
+  height: 240
+  fps: 10
+  use_gstreamer: true
+  publish_raw: false
+  jpeg_quality: 50
+
+# BALANCED - Recommended default for autonomous navigation
+# Good quality with manageable resource usage
+balanced:
+  width: 640
+  height: 480
+  fps: 15
+  use_gstreamer: true
+  publish_raw: false
+  jpeg_quality: 60
+
+# HIGH_QUALITY - For visual odometry or detailed obstacle detection
+# Higher resolution but still compressed-only for efficiency
+high_quality:
+  width: 1280
+  height: 720
+  fps: 15
+  use_gstreamer: true
+  publish_raw: false
+  jpeg_quality: 75
+
+# DEBUG - For calibration or detailed analysis
+# Publishes raw images, use sparingly
+debug:
+  width: 640
+  height: 480
+  fps: 10
+  use_gstreamer: true
+  publish_raw: true
+  jpeg_quality: 80
+
+# V4L2_FALLBACK - If GStreamer fails (non-CSI cameras or debugging)
+v4l2_fallback:
+  width: 640
+  height: 480
+  fps: 15
+  use_gstreamer: false
+  publish_raw: false
+  jpeg_quality: 60

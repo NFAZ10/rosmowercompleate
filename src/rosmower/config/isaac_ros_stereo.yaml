@@ -1,0 +1,117 @@
+# Isaac ROS Stereo Camera Configuration for Zone Recording
+# This configuration file is a placeholder for future Isaac ROS stereo camera integration
+# It will enable visual odometry to enhance GPS-based zone recording accuracy
+
+# Camera Configuration
+stereo_camera:
+  # Camera model (e.g., ZED, RealSense D435i, custom stereo rig)
+  model: "zed2i"  # Change based on your hardware
+  
+  # Camera resolution
+  resolution:
+    width: 1280
+    height: 720
+  
+  # Frame rate
+  fps: 30
+  
+  # Baseline (distance between cameras in meters)
+  baseline: 0.12
+  
+  # Field of view
+  fov:
+    horizontal: 110.0
+    vertical: 70.0
+
+# Visual Odometry Configuration
+visual_odometry:
+  # Enable/disable visual odometry
+  enabled: false  # Set to true when stereo camera is installed
+  
+  # Frame IDs
+  base_frame: "base_link"
+  odom_frame: "visual_odom"
+  
+  # Visual odometry algorithm
+  algorithm: "isaac_ros_visual_slam"  # or "rtabmap", "orb_slam3"
+  
+  # Feature detection parameters
+  features:
+    max_features: 1000
+    fast_threshold: 20
+    
+  # Odometry publishing rate
+  publish_rate: 30.0
+  
+  # Covariance (for sensor fusion)
+  position_covariance: [0.01, 0.0, 0.0,
+                        0.0, 0.01, 0.0,
+                        0.0, 0.0, 0.01]
+  
+  orientation_covariance: [0.01, 0.0, 0.0,
+                           0.0, 0.01, 0.0,
+                           0.0, 0.0, 0.01]
+
+# GPS-Visual Odometry Fusion
+sensor_fusion:
+  # Enable fusion between GPS and visual odometry
+  enabled: false  # Set to true when visual odometry is available
+  
+  # Fusion algorithm
+  algorithm: "ekf"  # Extended Kalman Filter
+  
+  # Sensor priorities (0-1, higher = more trusted)
+  gps_weight: 0.7  # GPS trusted more in open areas
+  visual_odom_weight: 0.3  # Visual odometry for short-term accuracy
+  
+  # Switch to visual odometry when GPS accuracy degrades
+  gps_degradation_threshold: 2.0  # meters
+  
+  # Use visual odometry exclusively if GPS accuracy exceeds this
+  gps_failure_threshold: 5.0  # meters
+  
+  # Publish fused pose
+  fused_pose_topic: "/fused/pose"
+  publish_rate: 10.0
+
+# Zone Recording Enhancement
+zone_recording:
+  # Use visual odometry for zone recording refinement
+  use_visual_refinement: false
+  
+  # Minimum GPS accuracy to record without visual odometry
+  gps_only_accuracy_threshold: 1.0  # meters
+  
+  # Minimum GPS accuracy to record with visual odometry assistance
+  gps_with_visual_accuracy_threshold: 3.0  # meters
+  
+  # Enable loop closure detection for zones
+  loop_closure_enabled: false
+  loop_closure_threshold: 0.5  # meters
+
+# Isaac ROS Packages Required (for reference)
+# - isaac_ros_visual_slam
+# - isaac_ros_image_pipeline
+# - isaac_ros_dnn_stereo_depth (optional, for depth estimation)
+
+# TODO: Integration Steps
+# 1. Install Isaac ROS packages (see ISAAC_ROS_INSTALLATION.md)
+# 2. Mount stereo camera on robot (recommended: front-facing, tilted 10-15° down)
+# 3. Calibrate stereo camera (use isaac_ros_camera_calibration)
+# 4. Update this config file with actual camera parameters
+# 5. Enable visual_odometry.enabled = true
+# 6. Test visual odometry in RViz
+# 7. Enable sensor_fusion.enabled = true
+# 8. Update zone_recorder parameters to use visual odometry
+
+# Recommended Stereo Camera Mounting for Zone Recording:
+# - Position: Front of robot, centered
+# - Height: 30-50cm above ground
+# - Tilt: 10-15° downward to capture ground features
+# - Protection: Weatherproof enclosure (outdoor use)
+# - Cable routing: Through robot chassis to avoid snagging
+
+# Performance Expectations:
+# - Visual odometry drift: < 1% over 100m in good lighting
+# - Position accuracy with fusion: 10-30cm in GPS-degraded areas
+# - Recommended for: Tree-covered areas, near buildings, under canopies

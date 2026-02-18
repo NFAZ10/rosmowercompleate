@@ -1,0 +1,12 @@
+battery_monitor:
+  ros__parameters:
+    low_battery_threshold: 25.0        # Percent - start return to dock
+    critical_battery_threshold: 15.0    # Percent - emergency dock NOW
+    charged_threshold: 95.0             # Percent - consider fully charged
+    charging_current_threshold: -0.1    # Amperes - negative = charging
+
+zone_manager:
+  ros__parameters:
+    zones_directory: /ws/zones
+    publish_rate: 1.0                   # Hz - how often to publish zone list
+    frame_id: map                       # Reference frame for zones

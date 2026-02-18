@@ -1,0 +1,6 @@
+# Request to delete a zone
+string zone_id
+---
+# Response
+bool success
+string message

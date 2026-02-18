@@ -25,7 +25,9 @@ def _build_camera_node(context, *args, **kwargs):
             'time_per_frame': [1, fps],      # 1/fps
            # 'pixel_format': mjpg,             # MJPG or YUYV
             'output_encoding': 'bgr8',       # common OpenCV encoding; convert if needed
-            'camera_frame_id': frame
+            'camera_frame_id': frame,
+            'auto_exposure': 3,              # 1=auto, 3=manual
+            'exposure_time_absolute': 50     # Lower=darker (range: 1-5000)
         }]
     )
 

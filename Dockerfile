@@ -51,7 +51,8 @@ RUN pip3 install \
     smbus2 \
     pyserial \
     pynmea2 \
-    paho-mqtt>=1.6.1
+    paho-mqtt>=1.6.1 \
+    pyproj
 
 
 # Install additional ROS 2 packages that might be needed
@@ -80,6 +81,7 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-rmw-cyclonedds-cpp \
     ros-${ROS_DISTRO}-nav2* \
     ros-${ROS_DISTRO}-slam-toolbox \
+    ros-${ROS_DISTRO}-rmw-zenoh-cpp\
     ros-${ROS_DISTRO}-nmea-navsat-driver \
     && rm -rf /var/lib/apt/lists/*
 
@@ -99,6 +101,13 @@ COPY sources.yaml ./
 RUN rosdep init || true
 RUN rosdep update
 RUN rosdep install --from-paths src --ignore-src -r -y --skip-keys="hailo_msgs" || echo "Some dependencies could not be resolved, continuing..."
+
+# Install Rust for Zenoh
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
+# Install Zenoh and DDS bridge
+RUN /root/.cargo/bin/cargo install zenohd zenoh-bridge-dds
 
 # Build the workspace
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \

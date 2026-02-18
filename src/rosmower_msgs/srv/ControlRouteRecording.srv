@@ -1,0 +1,9 @@
+# Request
+string route_id
+string action  # PAUSE, RESUME, CANCEL
+
+---
+# Response
+bool success
+string message
+string current_state  # IDLE, RECORDING, PAUSED

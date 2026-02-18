@@ -37,18 +37,23 @@ case "$1" in
         if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
             echo "Running ROS mower robot in detached mode..."
             $COMPOSE_CMD up -d rosmower
+            # Source workspace and run launch file in detached mode
+            docker exec -d rosmower_robot bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch rosmower launch_robot.launch.py"
         else
             echo "Running ROS mower robot..."
-            $COMPOSE_CMD up rosmower
+            $COMPOSE_CMD run --rm --name rosmower_robot rosmower bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch rosmower launch_robot.launch.py"
         fi
         ;;
     "dev")
+        # Generate unique container name using timestamp
+        CONTAINER_NAME="rosmower_dev_$(date +%s)"
         if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
             echo "Starting development container in detached mode..."
-            $COMPOSE_CMD --profile dev run -d --rm --name rosmower_dev_shell dev bash
+            echo "Container name: $CONTAINER_NAME"
+            $COMPOSE_CMD --profile dev run -d --rm --name "$CONTAINER_NAME" dev bash
         else
             echo "Starting development container..."
-            $COMPOSE_CMD --profile dev run --rm --name rosmower_dev_shell dev bash
+            $COMPOSE_CMD --profile dev run --rm --name "$CONTAINER_NAME" dev bash
         fi
         ;;
     "rviz")
@@ -127,6 +132,24 @@ case "$1" in
             $COMPOSE_CMD --profile dev run --rm --name rosmower_rtk_alt dev ros2 launch gps_rtk gps.launch.py use_rtk:=true ntrip_profile:=alt
         fi
         ;;
+    "zenoh")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Starting Zenoh router in Docker container (detached)..."
+            $COMPOSE_CMD --profile zenoh run -d --rm --name rosmower_zenoh zenoh bash -c "export ZENOH_ROUTER_CONFIG_URI=/ws_dev/zenoh-router.json5 && ros2 run rmw_zenoh_cpp rmw_zenohd"
+        else
+            echo "Starting Zenoh router in Docker container..."
+            $COMPOSE_CMD --profile zenoh run --rm --name rosmower_zenoh zenoh bash -c "export ZENOH_ROUTER_CONFIG_URI=/ws_dev/zenoh-router.json5 && ros2 run rmw_zenoh_cpp rmw_zenohd"
+        fi
+        ;;
+    "recorder"|"zone-recorder")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Launching Zone Recorder in main container (detached)..."
+            docker exec -d rosmower_robot bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch rosmower zone_recorder.launch.py gps_topic:=/mavros/global_position/global"
+        else
+            echo "Launching Zone Recorder in main container..."
+            docker exec -it rosmower_robot bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch rosmower zone_recorder.launch.py gps_topic:=/mavros/global_position/global"
+        fi
+        ;;
     "rqt")
         if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
             echo "Launching RQt in Docker container (detached)..."
@@ -192,6 +215,8 @@ case "$1" in
         echo "  gps [-d|--detached] - Launch GPS RTK (optional: detached mode)"
         echo "  rtk [-d|--detached] - Launch GPS with RTK enabled (default server)"
         echo "  rtk-alt [-d|--detached] - Launch GPS with RTK enabled (alternate server)"
+        echo "  zenoh [-d|--detached] - Start Zenoh router (optional: detached mode)"
+        echo "  recorder [-d|--detached] - Launch Zone Recorder for boundary recording (optional: detached)"
         echo "  rqt [-d|--detached] - Launch RQt GUI tools (optional: detached mode)"
         echo "  teleop  - Launch teleop keyboard controller"
         echo "  shell   - Open shell in running container"

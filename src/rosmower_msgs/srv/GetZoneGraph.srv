@@ -1,0 +1,8 @@
+# Request
+bool include_disabled_zones
+
+---
+# Response
+bool success
+rosmower_msgs/ZoneGraph graph
+string message

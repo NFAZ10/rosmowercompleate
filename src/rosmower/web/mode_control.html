@@ -458,6 +458,10 @@
             <span id="time-display">--:--</span>
         </div>
         <div class="status-bar-right">
+            <a href="/zones" class="nav-link">🗺️ Zones</a>
+            <a href="/zones/recorder" class="nav-link">📹 Record Zones</a>
+            <a href="/routes" class="nav-link">🛣️ Routes</a>
+            <a href="/status" class="nav-link">📊 Status</a>
             <a href="/camera" class="nav-link">📹 Camera Control</a>
             <div class="status-item battery-container">
                 <div class="battery-icon">
@@ -472,7 +476,7 @@
         <h1>🤖 ROS Mower</h1>
         
         <div class="connection-form">
-            <input type="text" id="rosbridge-url" placeholder="ws://10.0.212.198:9090" value="ws://10.0.212.198:9090">
+            <input type="text" id="rosbridge-url" placeholder="ws://auto-detected:9090" value="">
             <button onclick="connectToROS()">Connect</button>
         </div>
         
@@ -959,7 +963,28 @@
         }
 
         window.onload = function() {
-            setTimeout(connectToROS, 500);
+            console.log('Page loaded, fetching device IP...');
+            // Fetch device IP and auto-populate rosbridge URL
+            fetch('/api/ip')
+                .then(response => {
+                    console.log('API response received:', response.status);
+                    return response.json();
+                })
+                .then(data => {
+                    console.log('Device IP:', data.ip);
+                    const rosbridgeUrl = `ws://${data.ip}:9090`;
+                    console.log('Setting rosbridge URL to:', rosbridgeUrl);
+                    const inputField = document.getElementById('rosbridge-url');
+                    inputField.value = rosbridgeUrl;
+                    inputField.placeholder = rosbridgeUrl;
+                    console.log('Input field value is now:', inputField.value);
+                    setTimeout(connectToROS, 500);
+                })
+                .catch(error => {
+                    console.error('Failed to fetch device IP:', error);
+                    // Fallback to default behavior
+                    setTimeout(connectToROS, 500);
+                });
         };
     </script>
 </body>

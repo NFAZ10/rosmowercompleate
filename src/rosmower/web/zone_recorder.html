@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Zone Recorder - ROS Mower</title>
+    <!-- ROS Bridge for direct topic access -->
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .header {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .header h1 {
+            color: #333;
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            color: #666;
+            font-size: 14px;
+        }
+
+        .nav-links {
+            margin-top: 15px;
+        }
+
+        .nav-links a {
+            display: inline-block;
+            margin-right: 15px;
+            padding: 8px 15px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 5px;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        .nav-links a:hover {
+            background: #764ba2;
+        }
+
+        .main-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+
+        @media (max-width: 768px) {
+            .main-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .card {
+            background: white;
+            padding: 25px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .card h2 {
+            color: #333;
+            font-size: 20px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+
+        .status-indicator {
+            display: inline-flex;
+            align-items: center;
+            padding: 10px 20px;
+            border-radius: 25px;
+            font-weight: bold;
+            font-size: 18px;
+            margin-bottom: 20px;
+        }
+
+        .status-indicator.idle {
+            background: #e0e0e0;
+            color: #666;
+        }
+
+        .status-indicator.recording {
+            background: #4caf50;
+            color: white;
+            animation: pulse 2s infinite;
+        }
+
+        .status-indicator.paused {
+            background: #ff9800;
+            color: white;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+            display: inline-block;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 14px;
+            transition: border-color 0.3s;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .btn {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s;
+            margin-right: 10px;
+            margin-bottom: 10px;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        .btn:active {
+            transform: translateY(0);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .btn-primary {
+            background: #4caf50;
+            color: white;
+        }
+
+        .btn-primary:hover:not(:disabled) {
+            background: #45a049;
+        }
+
+        .btn-danger {
+            background: #f44336;
+            color: white;
+        }
+
+        .btn-danger:hover:not(:disabled) {
+            background: #da190b;
+        }
+
+        .btn-warning {
+            background: #ff9800;
+            color: white;
+        }
+
+        .btn-warning:hover:not(:disabled) {
+            background: #e68900;
+        }
+
+        .btn-secondary {
+            background: #607d8b;
+            color: white;
+        }
+
+        .btn-secondary:hover:not(:disabled) {
+            background: #546e7a;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+
+        .stat-box {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-box .label {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+        }
+
+        .stat-box .value {
+            color: #333;
+            font-size: 24px;
+            font-weight: bold;
+        }
+
+        .stat-box .unit {
+            color: #999;
+            font-size: 14px;
+        }
+
+        .gps-quality {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        .gps-quality .quality-dot {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .gps-quality.no-fix {
+            background: #ffebee;
+        }
+
+        .gps-quality.no-fix .quality-dot {
+            background: #f44336;
+        }
+
+        .gps-quality.poor {
+            background: #fff3e0;
+        }
+
+        .gps-quality.poor .quality-dot {
+            background: #ff9800;
+        }
+
+        .gps-quality.good {
+            background: #fff9c4;
+        }
+
+        .gps-quality.good .quality-dot {
+            background: #ffeb3b;
+        }
+
+        .gps-quality.excellent {
+            background: #e8f5e9;
+        }
+
+        .gps-quality.excellent .quality-dot {
+            background: #4caf50;
+        }
+
+        .message-box {
+            padding: 12px 15px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+            font-size: 14px;
+        }
+
+        .message-box.info {
+            background: #e3f2fd;
+            color: #1976d2;
+            border-left: 4px solid #1976d2;
+        }
+
+        .message-box.warning {
+            background: #fff3e0;
+            color: #f57c00;
+            border-left: 4px solid #f57c00;
+        }
+
+        .message-box.error {
+            background: #ffebee;
+            color: #c62828;
+            border-left: 4px solid #c62828;
+        }
+
+        .message-box.success {
+            background: #e8f5e9;
+            color: #2e7d32;
+            border-left: 4px solid #2e7d32;
+        }
+
+        .visualization {
+            border: 2px solid #e0e0e0;
+            border-radius: 8px;
+            padding: 20px;
+            min-height: 400px;
+            background: #fafafa;
+            position: relative;
+        }
+
+        .visualization canvas {
+            width: 100%;
+            height: 100%;
+            max-height: 500px;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+        }
+
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s steps(4, end) infinite;
+        }
+
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+
+        .instructions {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 6px;
+            margin-top: 15px;
+            font-size: 13px;
+            line-height: 1.6;
+        }
+
+        .instructions h3 {
+            color: #333;
+            font-size: 16px;
+            margin-bottom: 10px;
+        }
+
+        .instructions ol {
+            margin-left: 20px;
+        }
+
+        .instructions li {
+            margin-bottom: 8px;
+            color: #555;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🗺️ Zone Recorder</h1>
+            <p>Record zone boundaries by walking/driving the robot around the perimeter</p>
+            <div class="nav-links">
+                <a href="/">🏠 Home</a>
+                <a href="/zones">📋 Zone Manager</a>
+                <a href="/status">📊 Status</a>
+            </div>
+        </div>
+
+        <div class="main-grid">
+            <!-- Left Column: Controls -->
+            <div class="card">
+                <h2>Recording Controls</h2>
+                
+                <div id="statusIndicator" class="status-indicator idle">
+                    <span class="status-dot"></span>
+                    <span id="statusText">IDLE</span>
+                </div>
+
+                <div id="messageBox" class="message-box info" style="display: none;">
+                    <span id="messageText"></span>
+                </div>
+
+                <!-- Start Recording Form -->
+                <div id="startForm">
+                    <div class="form-group">
+                        <label for="zoneName">Zone Name</label>
+                        <input type="text" id="zoneName" placeholder="e.g., Front Yard" value="New Zone">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="zonePriority">Priority (0-255)</label>
+                        <input type="number" id="zonePriority" min="0" max="255" value="5">
+                    </div>
+
+                    <button class="btn btn-primary" onclick="startRecording()">
+                        ▶️ Start Recording
+                    </button>
+                </div>
+
+                <!-- Recording Controls (hidden initially) -->
+                <div id="recordingControls" style="display: none;">
+                    <div style="margin-bottom: 15px;">
+                        <strong>Recording: <span id="currentZoneName"></span></strong>
+                    </div>
+
+                    <button class="btn btn-warning" id="pauseBtn" onclick="pauseRecording()">
+                        ⏸️ Pause
+                    </button>
+                    <button class="btn btn-primary" id="resumeBtn" onclick="resumeRecording()" style="display: none;">
+                        ▶️ Resume
+                    </button>
+                    <button class="btn btn-secondary" onclick="stopRecording(true)">
+                        ⏹️ Stop & Save
+                    </button>
+                    <button class="btn btn-danger" onclick="cancelRecording()">
+                        ❌ Cancel
+                    </button>
+                </div>
+
+                <!-- Instructions -->
+                <div class="instructions">
+                    <h3>How to Record a Zone</h3>
+                    <ol>
+                        <li>Enter a descriptive zone name</li>
+                        <li>Ensure GPS has good signal (green or yellow indicator)</li>
+                        <li>Click "Start Recording"</li>
+                        <li>Walk or drive the robot around the perimeter of the zone</li>
+                        <li>The system automatically samples waypoints every 0.5m</li>
+                        <li>Use "Pause" if you need to navigate around obstacles</li>
+                        <li>Click "Stop & Save" to finish and save the zone</li>
+                    </ol>
+                </div>
+            </div>
+
+            <!-- Right Column: Status & Stats -->
+            <div class="card">
+                <h2>Recording Status</h2>
+
+                <!-- GPS Quality -->
+                <div id="gpsQuality" class="gps-quality no-fix">
+                    <div class="quality-dot"></div>
+                    <div>
+                        <strong id="gpsQualityText">GPS: No Fix</strong><br>
+                        <small id="gpsAccuracy">Accuracy: Unknown</small>
+                    </div>
+                </div>
+
+                <!-- Statistics -->
+                <div class="stats-grid">
+                    <div class="stat-box">
+                        <div class="label">Waypoints</div>
+                        <div class="value" id="waypointCount">0</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Distance</div>
+                        <div class="value" id="distanceTraveled">0</div>
+                        <div class="unit">meters</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">Area</div>
+                        <div class="value" id="estimatedArea">0</div>
+                        <div class="unit">m²</div>
+                    </div>
+                    <div class="stat-box">
+                        <div class="label">GPS Quality</div>
+                        <div class="value" id="gpsQualityValue">0</div>
+                        <div class="unit" id="gpsQualityLabel">No Fix</div>
+                    </div>
+                </div>
+
+                <div style="margin-top: 20px;">
+                    <strong>Status Message:</strong>
+                    <p id="statusMessage" style="color: #666; margin-top: 5px; font-size: 14px;">
+                        Ready to record
+                    </p>
+                </div>
+
+                <!-- Visualization placeholder -->
+                <div style="margin-top: 20px;">
+                    <h3 style="margin-bottom: 10px;">Path Visualization</h3>
+                    <div class="visualization">
+                        <canvas id="pathCanvas" width="400" height="400"></canvas>
+                        <div id="vizMessage" class="loading">Waiting for waypoints...</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let updateInterval = null;
+        let currentState = 'IDLE';
+        let canvas = null;
+        let ctx = null;
+        
+        // ROS Bridge connection
+        let ros = null;
+        let gpsListener = null;
+        let currentGpsQuality = 0;
+        let currentGpsAccuracy = 999.0;
+
+        // Initialize ROS connection
+        function initROS() {
+            fetch('/api/ip')
+                .then(response => response.json())
+                .then(data => {
+                    const robotIP = data.ip || window.location.hostname;
+                    ros = new ROSLIB.Ros({
+                        url: `ws://${robotIP}:9090`
+                    });
+
+                    ros.on('connection', function() {
+                        console.log('Connected to rosbridge websocket server.');
+                        subscribeToGPS();
+                    });
+
+                    ros.on('error', function(error) {
+                        console.log('Error connecting to rosbridge:', error);
+                    });
+
+                    ros.on('close', function() {
+                        console.log('Connection to rosbridge closed.');
+                        setTimeout(initROS, 5000); // Reconnect after 5 seconds
+                    });
+                })
+                .catch(error => {
+                    console.error('Failed to get robot IP:', error);
+                });
+        }
+
+        function subscribeToGPS() {
+            gpsListener = new ROSLIB.Topic({
+                ros: ros,
+                name: '/gps/fix',
+                messageType: 'sensor_msgs/NavSatFix'
+            });
+
+            gpsListener.subscribe(function(message) {
+                // Update GPS quality based on status
+                const gpsStatus = message.status.status;
+                
+                if (gpsStatus === -1) {
+                    currentGpsQuality = 0;  // No fix
+                    currentGpsAccuracy = 999.0;
+                } else if (gpsStatus === 0) {
+                    currentGpsQuality = 2;  // 3D fix
+                    currentGpsAccuracy = 1.5;
+                } else if (gpsStatus === 1) {
+                    currentGpsQuality = 2;  // SBAS
+                    currentGpsAccuracy = 1.0;
+                } else if (gpsStatus === 2) {
+                    currentGpsQuality = 4;  // RTK
+                    currentGpsAccuracy = 0.05;
+                }
+
+                // Override with covariance if available
+                if (message.position_covariance && message.position_covariance[0] > 0) {
+                    currentGpsAccuracy = Math.sqrt(message.position_covariance[0]);
+                }
+
+                // Update GPS display immediately
+                updateGPSQuality(currentGpsQuality, currentGpsAccuracy);
+            });
+        }
+
+        // Initialize
+        window.onload = function() {
+            canvas = document.getElementById('pathCanvas');
+            ctx = canvas.getContext('2d');
+            initROS();  // Connect to ROS bridge for GPS
+            startStatusUpdates();
+        };
+
+        function startStatusUpdates() {
+            updateStatus();
+            updateInterval = setInterval(updateStatus, 1000); // Update every second
+        }
+
+        function updateStatus() {
+            fetch('/api/zone/record/status')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        updateUI(data);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error fetching status:', error);
+                });
+        }
+
+        function updateUI(status) {
+            currentState = status.state_str;
+
+            // Update status indicator
+            const indicator = document.getElementById('statusIndicator');
+            const statusText = document.getElementById('statusText');
+            indicator.className = 'status-indicator ' + currentState.toLowerCase();
+            statusText.textContent = currentState;
+
+            // Update forms visibility
+            const startForm = document.getElementById('startForm');
+            const recordingControls = document.getElementById('recordingControls');
+            
+            if (currentState === 'IDLE') {
+                startForm.style.display = 'block';
+                recordingControls.style.display = 'none';
+            } else {
+                startForm.style.display = 'none';
+                recordingControls.style.display = 'block';
+                document.getElementById('currentZoneName').textContent = status.zone_name;
+            }
+
+            // Update pause/resume buttons
+            const pauseBtn = document.getElementById('pauseBtn');
+            const resumeBtn = document.getElementById('resumeBtn');
+            if (currentState === 'PAUSED') {
+                pauseBtn.style.display = 'none';
+                resumeBtn.style.display = 'inline-block';
+            } else if (currentState === 'RECORDING') {
+                pauseBtn.style.display = 'inline-block';
+                resumeBtn.style.display = 'none';
+            }
+
+            // Update GPS quality
+            updateGPSQuality(status.gps_quality, status.gps_accuracy);
+
+            // Update statistics
+            document.getElementById('waypointCount').textContent = status.waypoint_count;
+            document.getElementById('distanceTraveled').textContent = status.distance_traveled.toFixed(1);
+            document.getElementById('estimatedArea').textContent = status.estimated_area.toFixed(1);
+            document.getElementById('statusMessage').textContent = status.status_message;
+
+            // Update visualization
+            if (status.waypoint_count > 0) {
+                document.getElementById('vizMessage').style.display = 'none';
+                // TODO: Draw waypoints on canvas
+                // This would require getting waypoint positions from another topic
+            }
+        }
+
+        function updateGPSQuality(quality, accuracy) {
+            const gpsQualityDiv = document.getElementById('gpsQuality');
+            const gpsQualityText = document.getElementById('gpsQualityText');
+            const gpsAccuracyText = document.getElementById('gpsAccuracy');
+            const gpsQualityValue = document.getElementById('gpsQualityValue');
+            const gpsQualityLabel = document.getElementById('gpsQualityLabel');
+
+            let qualityClass = 'no-fix';
+            let qualityText = 'No Fix';
+            let qualityLabel = 'No Fix';
+
+            if (quality === 0) {
+                qualityClass = 'no-fix';
+                qualityText = 'GPS: No Fix';
+                qualityLabel = 'No Fix';
+            } else if (quality === 1) {
+                qualityClass = 'poor';
+                qualityText = 'GPS: 2D Fix';
+                qualityLabel = '2D Fix';
+            } else if (quality === 2) {
+                qualityClass = 'good';
+                qualityText = 'GPS: 3D Fix';
+                qualityLabel = '3D Fix';
+            } else if (quality === 3) {
+                qualityClass = 'good';
+                qualityText = 'GPS: RTK Float';
+                qualityLabel = 'RTK Float';
+            } else if (quality >= 4) {
+                qualityClass = 'excellent';
+                qualityText = 'GPS: RTK Fixed';
+                qualityLabel = 'RTK Fixed';
+            }
+
+            gpsQualityDiv.className = 'gps-quality ' + qualityClass;
+            gpsQualityText.textContent = qualityText;
+            gpsAccuracyText.textContent = 'Accuracy: ' + accuracy.toFixed(2) + 'm';
+            gpsQualityValue.textContent = quality;
+            gpsQualityLabel.textContent = qualityLabel;
+        }
+
+        function showMessage(message, type = 'info') {
+            const messageBox = document.getElementById('messageBox');
+            const messageText = document.getElementById('messageText');
+            messageBox.className = 'message-box ' + type;
+            messageText.textContent = message;
+            messageBox.style.display = 'block';
+
+            // Auto-hide after 5 seconds
+            setTimeout(() => {
+                messageBox.style.display = 'none';
+            }, 5000);
+        }
+
+        function startRecording() {
+            const zoneName = document.getElementById('zoneName').value;
+            const priority = parseInt(document.getElementById('zonePriority').value);
+
+            if (!zoneName.trim()) {
+                showMessage('Please enter a zone name', 'error');
+                return;
+            }
+
+            fetch('/api/zone/record/start', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    zone_name: zoneName,
+                    priority: priority,
+                    use_visual_odometry: false
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Recording started: ' + zoneName, 'success');
+                } else {
+                    showMessage('Failed to start recording: ' + (data.message || data.error), 'error');
+                }
+            })
+            .catch(error => {
+                showMessage('Error: ' + error, 'error');
+            });
+        }
+
+        function pauseRecording() {
+            fetch('/api/zone/record/pause', {method: 'POST'})
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Recording paused', 'info');
+                } else {
+                    showMessage('Failed to pause: ' + (data.message || data.error), 'error');
+                }
+            })
+            .catch(error => {
+                showMessage('Error: ' + error, 'error');
+            });
+        }
+
+        function resumeRecording() {
+            fetch('/api/zone/record/resume', {method: 'POST'})
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Recording resumed', 'success');
+                } else {
+                    showMessage('Failed to resume: ' + (data.message || data.error), 'error');
+                }
+            })
+            .catch(error => {
+                showMessage('Error: ' + error, 'error');
+            });
+        }
+
+        function stopRecording(save = true) {
+            if (!confirm('Stop recording and ' + (save ? 'save' : 'discard') + ' zone?')) {
+                return;
+            }
+
+            fetch('/api/zone/record/stop', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    save_zone: save,
+                    auto_close: true,
+                    simplify: true,
+                    simplification_tolerance: 0.3
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage(data.message, 'success');
+                } else {
+                    showMessage('Failed to stop: ' + (data.message || data.error), 'error');
+                }
+            })
+            .catch(error => {
+                showMessage('Error: ' + error, 'error');
+            });
+        }
+
+        function cancelRecording() {
+            if (!confirm('Cancel recording? All waypoints will be lost.')) {
+                return;
+            }
+
+            fetch('/api/zone/record/cancel', {method: 'POST'})
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage('Recording cancelled', 'info');
+                } else {
+                    showMessage('Failed to cancel: ' + (data.message || data.error), 'error');
+                }
+            })
+            .catch(error => {
+                showMessage('Error: ' + error, 'error');
+            });
+        }
+    </script>
+</body>
+</html>

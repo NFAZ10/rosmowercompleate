@@ -72,6 +72,7 @@ RUN apt-get update && apt-get install -y \
     ros-${ROS_DISTRO}-web-video-server \
     ros-${ROS_DISTRO}-nav2* \
     ros-${ROS_DISTRO}-slam-toolbox* \
+    ros-${ROS_DISTRO}-rmw-zenoh-cpp\
     && rm -rf /var/lib/apt/lists/*
 
 # Install NVIDIA Jetson multimedia libraries and GStreamer plugins
@@ -106,12 +107,15 @@ RUN rosdep init || true
 RUN rosdep update
 RUN rosdep install --from-paths src --ignore-src -r -y --skip-keys="hailo_msgs" || echo "Some dependencies could not be resolved, continuing..."
 
+
+
 # Install Python packages via pip
 RUN pip3 install \
     smbus2 \
     pyserial \
     pynmea2 \
-    paho-mqtt>=1.6.1
+    paho-mqtt>=1.6.1 \
+    pyproj
 
 # Build the workspace
 RUN . /opt/ros/${ROS_DISTRO}/setup.sh && \
