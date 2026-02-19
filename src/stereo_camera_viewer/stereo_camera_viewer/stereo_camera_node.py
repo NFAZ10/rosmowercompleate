@@ -61,6 +61,7 @@ class StereoCameraNode(Node):
         self._v4l2_raw_width = 3280
         self._v4l2_raw_height = 2464
         self._v4l2_frame_bytes = self._v4l2_raw_width * self._v4l2_raw_height * 2
+        self._last_init_attempt = 0.0  # Timestamp of last init attempt (for retry cooldown)
         
         # Publishers - raw images
         self.left_image_pub = self.create_publisher(Image, 'stereo/left/image_raw', 10)
@@ -300,8 +301,12 @@ class StereoCameraNode(Node):
             right_ok = self.right_v4l2_proc is not None
         
         if not left_ok and not right_ok:
-            self.get_logger().warn('No cameras available, attempting to reinitialize...', throttle_duration_sec=5.0)
-            self.init_cameras()
+            import time
+            now = time.monotonic()
+            if now - self._last_init_attempt > 10.0:  # Retry every 10s, not every frame
+                self._last_init_attempt = now
+                self.get_logger().warn('No cameras available, attempting to reinitialize...')
+                self.init_cameras()
             return
         
         try:

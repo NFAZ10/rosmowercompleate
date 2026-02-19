@@ -35,6 +35,7 @@ RUN apt-get update && apt-get install -y \
     terminator \
     udev \
     nano \
+    v4l-utils \
     && rm -rf /var/lib/apt/lists/*
 
 # Install GitHub CLI and Copilot CLI
