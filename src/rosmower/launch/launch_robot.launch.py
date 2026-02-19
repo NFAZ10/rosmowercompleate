@@ -51,12 +51,14 @@ def generate_launch_description():
         name='stereo_camera_node',
         output='screen',
         parameters=[{
-            'left_camera_id': 2,       # /dev/video2 = left IMX219 CSI camera
-            'right_camera_id': 1,      # /dev/video1 = right IMX219 CSI camera
+            'left_camera_id': 2,       # /dev/video2 = left IMX219 CSI camera (V4L2 fallback)
+            'right_camera_id': 1,      # /dev/video1 = right IMX219 CSI camera (V4L2 fallback)
+            'left_sensor_id': 0,       # nvarguscamerasrc sensor-id for left (CAM0 port)
+            'right_sensor_id': 1,      # nvarguscamerasrc sensor-id for right (CAM1 port)
             'width': 1280,             # Native supported resolution
             'height': 720,             # Use 1280x720 @ 30fps
             'fps': 15,
-            'use_gstreamer': False,    # V4L2 mode: works headless without nvargus EGL
+            'use_gstreamer': True,     # nvarguscamerasrc: proper ISP/AWB/debayer for IMX219
             'flip_method': 0,          # 0=none, 2=rotate-180
             'left_frame_id': 'left_camera_link',   # Match URDF
             'right_frame_id': 'right_camera_link', # Match URDF
