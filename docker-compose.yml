@@ -20,6 +20,8 @@ services:
       - ./cyclonedds.xml:/ws/cyclonedds.xml:ro
       # For GUI applications
       - /tmp/.X11-unix:/tmp/.X11-unix:rw
+      # Mount nvargus-daemon socket for CSI camera access
+      - /tmp/argus_socket:/tmp/argus_socket
     environment:
       - ROS_DOMAIN_ID=0
       - ROS_DISTRO=humble
@@ -101,6 +103,14 @@ services:
       # Mount NVIDIA Jetson libraries for camera access
       - /usr/lib/aarch64-linux-gnu/tegra:/usr/lib/aarch64-linux-gnu/tegra:ro
       - /usr/lib/aarch64-linux-gnu/gstreamer-1.0:/usr/lib/aarch64-linux-gnu/gstreamer-1.0:ro
+      # Mount NVIDIA userspace libs (nvargus socket client, ISP, etc.)
+      - /usr/lib/aarch64-linux-gnu/nvidia:/usr/lib/aarch64-linux-gnu/nvidia:ro
+      # Mount tegra-egl for headless EGL (nvarguscamerasrc FrameConsumer)
+      - /usr/lib/aarch64-linux-gnu/tegra-egl:/usr/lib/aarch64-linux-gnu/tegra-egl:ro
+      # Mount GLVND EGL vendor config so NVIDIA EGL is preferred over Mesa
+      - /usr/lib/aarch64-linux-gnu/tegra-egl/nvidia.json:/usr/share/glvnd/egl_vendor.d/10_nvidia.json:ro
+      # Mount nvargus-daemon socket for CSI camera access
+      - /tmp/argus_socket:/tmp/argus_socket
       # Mount GitHub CLI credentials if they exist
       - ${HOME}/.config/gh:/root/.config/gh:ro
     environment:
@@ -108,8 +118,10 @@ services:
       - ROS_DISTRO=humble
       - DISPLAY=${DISPLAY}
       - QT_X11_NO_MITSHM=1
-      - LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
+      - LD_LIBRARY_PATH=/usr/lib/aarch64-linux-gnu/nvidia:/usr/lib/aarch64-linux-gnu/tegra-egl:/usr/lib/aarch64-linux-gnu/tegra:${LD_LIBRARY_PATH}
       - GST_PLUGIN_PATH=/usr/lib/aarch64-linux-gnu/gstreamer-1.0
+      # Required for nvarguscamerasrc to work headless (no display/compositor needed)
+      - EGL_PLATFORM=surfaceless
       - BASH_ENV=/root/.bashrc
       - RMW_IMPLEMENTATION=rmw_fastrtps_cpp
     devices:
