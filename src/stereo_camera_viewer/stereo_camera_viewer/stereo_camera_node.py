@@ -150,8 +150,14 @@ class StereoCameraNode(Node):
                         # IMX219 RG10: MSB-aligned 10-bit → shift >>8 for 8-bit, normalize exposure
                         bayer8 = (bayer_crop >> 8).astype(np.uint8)
                         bayer8 = cv2.normalize(bayer8, None, 0, 255, cv2.NORM_MINMAX)
-                        # Debayer RGGB → BGR
-                        frame = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
+                        # Debayer SRGGB (RGGB) → BGR — confirmed by Waveshare IMX219-83 datasheet
+                        bgr = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
+                        # Per-channel normalize = manual white balance (no ISP/AWB in raw V4L2 mode)
+                        b, g, r = cv2.split(bgr)
+                        b = cv2.normalize(b, None, 0, 255, cv2.NORM_MINMAX)
+                        g = cv2.normalize(g, None, 0, 255, cv2.NORM_MINMAX)
+                        r = cv2.normalize(r, None, 0, 255, cv2.NORM_MINMAX)
+                        frame = cv2.merge([b, g, r])
                         # Discard old frame, put latest
                         try:
                             frame_queue.get_nowait()
