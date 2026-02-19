@@ -108,51 +108,78 @@ class StereoCameraNode(Node):
     
     def _start_v4l2_raw(self, device_id):
         """
-        Start a v4l2-ctl streaming subprocess to read raw RG10 (uint16 Bayer) frames.
-        The Tegra V4L2 driver always outputs 3280x2464 at RG10 regardless of requested size.
-        Returns the subprocess, or None on failure.
+        Start a background thread that reads raw RG10 frames from v4l2-ctl and
+        decodes them. The latest decoded BGR frame is stored in a queue for the
+        timer callback to pick up without blocking the ROS spin thread.
+        Returns (proc, thread, queue) or None on failure.
         """
+        import queue as queue_mod
         try:
             proc = subprocess.Popen(
                 ['v4l2-ctl', '-d', f'/dev/video{device_id}',
                  '--stream-mmap', '--stream-count=0', '--stream-to=-'],
                 stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                bufsize=0
+                stderr=subprocess.PIPE,
+                bufsize=-1  # Buffered: read(n) blocks until exactly n bytes received
             )
+            # Give the subprocess a moment to start and check for immediate errors
+            import time
+            time.sleep(0.3)
+            if proc.poll() is not None:
+                err = proc.stderr.read().decode('utf-8', errors='replace')
+                self.get_logger().error(f'v4l2-ctl for /dev/video{device_id} exited immediately: {err}')
+                return None
+            
+            frame_queue = queue_mod.Queue(maxsize=1)  # Keep only latest frame
+            
+            def _reader():
+                while proc.poll() is None:
+                    try:
+                        # Single blocking read for the full frame (background thread — OK to block)
+                        raw = proc.stdout.read(self._v4l2_frame_bytes)
+                        if len(raw) != self._v4l2_frame_bytes:
+                            continue
+                        # Parse as uint16 (2 bytes/pixel, little-endian)
+                        bayer16 = np.frombuffer(raw, dtype=np.uint16).reshape(
+                            self._v4l2_raw_height, self._v4l2_raw_width)
+                        # Crop Bayer BEFORE debayering (0.9MP instead of 8MP — 9x speedup).
+                        # Align crop to even pixel boundary to preserve RGGB pattern.
+                        cy = ((self._v4l2_raw_height - self.height) // 2) & ~1
+                        cx = ((self._v4l2_raw_width  - self.width)  // 2) & ~1
+                        bayer_crop = bayer16[cy:cy + self.height, cx:cx + self.width]
+                        # IMX219 RG10: MSB-aligned 10-bit → shift >>8 for 8-bit, normalize exposure
+                        bayer8 = (bayer_crop >> 8).astype(np.uint8)
+                        bayer8 = cv2.normalize(bayer8, None, 0, 255, cv2.NORM_MINMAX)
+                        # Debayer RGGB → BGR
+                        frame = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
+                        # Discard old frame, put latest
+                        try:
+                            frame_queue.get_nowait()
+                        except queue_mod.Empty:
+                            pass
+                        frame_queue.put_nowait(frame)
+                    except Exception as e:
+                        self.get_logger().error(f'V4L2 reader error /dev/video{device_id}: {e}',
+                                                throttle_duration_sec=5.0)
+                self.get_logger().warn(f'V4L2 reader thread exiting for /dev/video{device_id}')
+            
+            t = threading.Thread(target=_reader, daemon=True, name=f'v4l2_{device_id}')
+            t.start()
             self.get_logger().info(f'Started V4L2 raw reader for /dev/video{device_id} (pid={proc.pid})')
-            return proc
+            return (proc, t, frame_queue)
         except Exception as e:
             self.get_logger().error(f'Failed to start V4L2 reader for /dev/video{device_id}: {e}')
             return None
 
-    def _read_v4l2_raw_frame(self, proc):
-        """
-        Read one raw RG10 frame from a v4l2-ctl subprocess and decode to BGR8.
-        IMX219 outputs 10-bit Bayer (RGGB) MSB-aligned in uint16.
-        Full sensor: 3280x2464 → center-crop to requested width x height.
-        Returns decoded BGR frame or None on error.
-        """
+    def _read_v4l2_raw_frame(self, reader):
+        """Get the latest decoded frame from the V4L2 reader thread. Non-blocking."""
+        import queue as queue_mod
+        if reader is None:
+            return None
+        _, _, frame_queue = reader
         try:
-            raw = proc.stdout.read(self._v4l2_frame_bytes)
-            if len(raw) != self._v4l2_frame_bytes:
-                return None
-            # Parse as uint16 (2 bytes per pixel, little-endian)
-            bayer16 = np.frombuffer(raw, dtype=np.uint16).reshape(
-                self._v4l2_raw_height, self._v4l2_raw_width)
-            # IMX219 RG10 on Tegra: 10-bit value is MSB-aligned in 16-bit word → shift >>8 for 8-bit.
-            # Then normalize to full 0-255 range to correct for sensor exposure/dark levels.
-            bayer8 = (bayer16 >> 8).astype(np.uint8)
-            bayer8 = cv2.normalize(bayer8, None, 0, 255, cv2.NORM_MINMAX)
-            # Debayer: IMX219 is RGGB pattern → OpenCV COLOR_BAYER_RG2BGR
-            bgr_full = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
-            # Center-crop from 3280x2464 to target resolution
-            cy = (self._v4l2_raw_height - self.height) // 2
-            cx = (self._v4l2_raw_width - self.width) // 2
-            frame = bgr_full[cy:cy + self.height, cx:cx + self.width]
-            return frame
-        except Exception as e:
-            self.get_logger().error(f'Error reading V4L2 raw frame: {e}', throttle_duration_sec=5.0)
+            return frame_queue.get_nowait()
+        except queue_mod.Empty:
             return None
 
     def init_cameras(self):
@@ -377,9 +404,9 @@ class StereoCameraNode(Node):
         if self.right_cap:
             self.right_cap.release()
         if self.left_v4l2_proc:
-            self.left_v4l2_proc.terminate()
+            self.left_v4l2_proc[0].terminate()
         if self.right_v4l2_proc:
-            self.right_v4l2_proc.terminate()
+            self.right_v4l2_proc[0].terminate()
         cv2.destroyAllWindows()
         super().destroy_node()
 
