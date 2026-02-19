@@ -36,6 +36,7 @@ class StereoCameraNode(Node):
         self.declare_parameter('flip_method', 0)  # 0=none, 2=rotate-180, etc.
         self.declare_parameter('jpeg_quality', 80)  # Quality for compressed images
         self.declare_parameter('publish_raw', True)  # Publish raw images (disable for low-resource systems)
+        self.declare_parameter('denoise', True)  # Bilateral denoising — disable for full-res/focus mode
         
         # Get parameters
         self.left_camera_id = self.get_parameter('left_camera_id').value
@@ -50,6 +51,7 @@ class StereoCameraNode(Node):
         self.flip_method = self.get_parameter('flip_method').value
         self.jpeg_quality = self.get_parameter('jpeg_quality').value
         self.publish_raw = self.get_parameter('publish_raw').value
+        self.denoise = self.get_parameter('denoise').value
         
         # Create CV Bridge
         self.bridge = CvBridge()
@@ -159,7 +161,8 @@ class StereoCameraNode(Node):
                         # Debayer SRGGB (RGGB) → BGR — confirmed by Waveshare IMX219-83 datasheet
                         bgr = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
                         # Edge-preserving denoise: bilateral filter smooths grain while keeping edges sharp.
-                        bgr = cv2.bilateralFilter(bgr, d=5, sigmaColor=40, sigmaSpace=40)
+                        if self.denoise:
+                            bgr = cv2.bilateralFilter(bgr, d=5, sigmaColor=40, sigmaSpace=40)
                         # Gray-world white balance: scale each channel to match global mean.
                         # More stable than per-channel NORM_MINMAX which is easily skewed by bright outliers.
                         b_ch, g_ch, r_ch = cv2.split(bgr.astype(np.float32))
