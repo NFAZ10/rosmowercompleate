@@ -147,11 +147,19 @@ class StereoCameraNode(Node):
                         cy = ((self._v4l2_raw_height - self.height) // 2) & ~1
                         cx = ((self._v4l2_raw_width  - self.width)  // 2) & ~1
                         bayer_crop = bayer16[cy:cy + self.height, cx:cx + self.width]
-                        # IMX219 RG10: MSB-aligned 10-bit → shift >>8 for 8-bit, normalize exposure
-                        bayer8 = (bayer_crop >> 8).astype(np.uint8)
-                        bayer8 = cv2.normalize(bayer8, None, 0, 255, cv2.NORM_MINMAX)
+                        # IMX219 RG10: MSB-aligned 10-bit in uint16 → >>8 for 8-bit.
+                        # Use 2nd–98th percentile as exposure window — robust to hot pixels,
+                        # avoids the noise amplification of stretching min→0, max→255.
+                        bayer8 = (bayer_crop >> 8).astype(np.float32)
+                        p_lo, p_hi = float(np.percentile(bayer8, 2)), float(np.percentile(bayer8, 98))
+                        if p_hi > p_lo + 1:
+                            bayer8 = np.clip((bayer8 - p_lo) / (p_hi - p_lo) * 255, 0, 255).astype(np.uint8)
+                        else:
+                            bayer8 = bayer8.astype(np.uint8)
                         # Debayer SRGGB (RGGB) → BGR — confirmed by Waveshare IMX219-83 datasheet
                         bgr = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
+                        # Edge-preserving denoise: bilateral filter smooths grain while keeping edges sharp.
+                        bgr = cv2.bilateralFilter(bgr, d=5, sigmaColor=40, sigmaSpace=40)
                         # Gray-world white balance: scale each channel to match global mean.
                         # More stable than per-channel NORM_MINMAX which is easily skewed by bright outliers.
                         b_ch, g_ch, r_ch = cv2.split(bgr.astype(np.float32))
@@ -163,8 +171,8 @@ class StereoCameraNode(Node):
                         g_ch = np.clip(g_ch * (gray / g_mean), 0, 255).astype(np.uint8)
                         r_ch = np.clip(r_ch * (gray / r_mean), 0, 255).astype(np.uint8)
                         frame = cv2.merge([b_ch, g_ch, r_ch])
-                        # Boost mid-tones (gamma < 1.0 = brighter). 0.45 is a significant boost.
-                        lut = np.array([min(255, int(255 * (i / 255.0) ** 0.45)) for i in range(256)], dtype=np.uint8)
+                        # Boost mid-tones (gamma < 1.0 = brighter). 0.5 balances brightness vs noise.
+                        lut = np.array([min(255, int(255 * (i / 255.0) ** 0.5)) for i in range(256)], dtype=np.uint8)
                         frame = lut[frame]
                         # Discard old frame, put latest
                         try:
