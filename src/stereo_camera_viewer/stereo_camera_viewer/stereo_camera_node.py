@@ -252,6 +252,21 @@ class StereoCameraNode(Node):
         
         return camera_info
     
+    def _process_frame(self, frame):
+        """Debayer raw Bayer frames; BGR frames (YUYV/MJPG) pass through unchanged."""
+        if not self.use_gstreamer and frame is not None:
+            try:
+                # Only debayer if frame is single-channel (true raw Bayer, e.g. RG10).
+                # Multi-channel frames are already BGR (converted by OpenCV from YUYV/MJPG).
+                if frame.ndim == 2 or (frame.ndim == 3 and frame.shape[2] == 1):
+                    gray = frame.reshape(frame.shape[0], frame.shape[1])
+                    # Scale 10-bit Bayer values to 8-bit before debayering
+                    gray8 = (gray.astype(np.uint16) >> 2).astype(np.uint8)
+                    frame = cv2.cvtColor(gray8, cv2.COLOR_BAYER_RG2BGR)
+            except Exception:
+                pass
+        return frame
+
     def create_compressed_image(self, frame, header):
         """Create a CompressedImage message from a cv2 frame"""
         compressed_msg = CompressedImage()
@@ -291,6 +306,7 @@ class StereoCameraNode(Node):
             
             # Publish available frames
             if ret_left and frame_left is not None:
+                frame_left = self._process_frame(frame_left)
                 # Create timestamp
                 timestamp = self.get_clock().now().to_msg()
                 
@@ -314,6 +330,7 @@ class StereoCameraNode(Node):
                 self.left_info_pub.publish(left_info)
             
             if ret_right and frame_right is not None:
+                frame_right = self._process_frame(frame_right)
                 # Create timestamp
                 timestamp = self.get_clock().now().to_msg()
                 

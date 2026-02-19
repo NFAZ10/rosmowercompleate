@@ -514,7 +514,7 @@
         let maxAngularSpeed = 2.0; // rad/s
         
         // Connect to ROS
-        let rosbridgeUrl = 'ws://10.31.18.195:9090'; // Default fallback
+        let rosbridgeUrl = `ws://${window.location.hostname}:9090`;
         
         function connectROS() {
             ros = new ROSLIB.Ros({
@@ -558,7 +558,7 @@
             // Camera subscriber (compressed image)
             imageTopic = new ROSLIB.Topic({
                 ros: ros,
-                name: '/stereo/right/image_raw_compressed',
+                name: '/stereo/right/image_raw/compressed',
                 messageType: 'sensor_msgs/CompressedImage'
             });
             
@@ -751,18 +751,8 @@
             initializeControls();
         }
         
-        // Fetch device IP and initialize ROS connection
-        fetch('/api/ip')
-            .then(response => response.json())
-            .then(data => {
-                rosbridgeUrl = `ws://${data.ip}:9090`;
-                connectROS();
-            })
-            .catch(error => {
-                console.error('Failed to fetch device IP:', error);
-                // Fallback to default
-                connectROS();
-            });
+        // Connect using the browser's hostname (always matches the robot's IP)
+        connectROS();
     </script>
 </body>
 </html>

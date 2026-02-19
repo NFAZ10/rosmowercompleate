@@ -51,12 +51,12 @@ def generate_launch_description():
         name='stereo_camera_node',
         output='screen',
         parameters=[{
-            'left_camera_id': 0,       # sensor-id 0 = CAM0 port on Jetson carrier
-            'right_camera_id': 1,      # sensor-id 1 = CAM1 port on Jetson carrier
-            'width': 640,              # Balanced preset: 640x480 @ 15fps
-            'height': 480,             # Use 320x240 @ 10fps for minimal load
-            'fps': 15,                 # Use 1280x720 @ 15fps for high quality
-            'use_gstreamer': True,     # REQUIRED for CSI cameras on Jetson (hardware accel)
+            'left_camera_id': 2,       # /dev/video2 = left IMX219 CSI camera
+            'right_camera_id': 1,      # /dev/video1 = right IMX219 CSI camera
+            'width': 1280,             # Native supported resolution
+            'height': 720,             # Use 1280x720 @ 30fps
+            'fps': 15,
+            'use_gstreamer': False,    # V4L2 mode: works headless without nvargus EGL
             'flip_method': 0,          # 0=none, 2=rotate-180
             'left_frame_id': 'left_camera_link',   # Match URDF
             'right_frame_id': 'right_camera_link', # Match URDF
@@ -304,6 +304,8 @@ def generate_launch_description():
         DeclareLaunchArgument('arm', default_value='true', description='Enable motor arming if true'),
         DeclareLaunchArgument('use_vesc', default_value='true',
                               description='Launch VESC differential drive motor controller'),
+        DeclareLaunchArgument('use_rosbridge', default_value='true',
+                              description='Launch rosbridge websocket server on port 9090'),
 
         quiet_env,
         rsp,
@@ -312,7 +314,8 @@ def generate_launch_description():
         icm20948_launch,      # ICM20948 IMU driver
         imu_bridge,
         rplidar_node,           # RPlidar C1 with motor control - ENABLED
-        #stereo_camera_node,        # Stereo CSI cameras (IMX219) - Now with HW accel
+        stereo_camera_node,        # Stereo CSI cameras (IMX219) - Now with HW accel
+        rosbridge_node,            # rosbridge websocket (port 9090)
         battery_splitter_node,
         mavros_node,
         vesc_launch,          # VESC differential drive motor controller
