@@ -304,8 +304,6 @@ def generate_launch_description():
         DeclareLaunchArgument('arm', default_value='true', description='Enable motor arming if true'),
         DeclareLaunchArgument('use_vesc', default_value='true',
                               description='Launch VESC differential drive motor controller'),
-        DeclareLaunchArgument('use_rosbridge', default_value='true',
-                              description='Launch rosbridge websocket server on port 9090'),
 
         quiet_env,
         rsp,
@@ -315,7 +313,6 @@ def generate_launch_description():
         imu_bridge,
         rplidar_node,           # RPlidar C1 with motor control - ENABLED
         stereo_camera_node,        # Stereo CSI cameras (IMX219) - Now with HW accel
-        rosbridge_node,            # rosbridge websocket (port 9090)
         battery_splitter_node,
         mavros_node,
         vesc_launch,          # VESC differential drive motor controller
