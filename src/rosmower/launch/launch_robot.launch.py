@@ -58,7 +58,7 @@ def generate_launch_description():
             'width': 1280,             # Native supported resolution
             'height': 720,             # Use 1280x720 @ 30fps
             'fps': 15,
-            'use_gstreamer': True,     # nvarguscamerasrc: proper ISP/AWB/debayer for IMX219
+            'use_gstreamer': False,    # nvarguscamerasrc crashes in Docker (no nvargus-daemon); use V4L2 raw reader
             'flip_method': 0,          # 0=none, 2=rotate-180
             'left_frame_id': 'left_camera_link',   # Match URDF
             'right_frame_id': 'right_camera_link', # Match URDF

@@ -139,8 +139,10 @@ class StereoCameraNode(Node):
             # Parse as uint16 (2 bytes per pixel, little-endian)
             bayer16 = np.frombuffer(raw, dtype=np.uint16).reshape(
                 self._v4l2_raw_height, self._v4l2_raw_width)
-            # IMX219 RG10 on Tegra: 10-bit value is MSB-aligned in 16-bit word → shift >>8 for 8-bit
+            # IMX219 RG10 on Tegra: 10-bit value is MSB-aligned in 16-bit word → shift >>8 for 8-bit.
+            # Then normalize to full 0-255 range to correct for sensor exposure/dark levels.
             bayer8 = (bayer16 >> 8).astype(np.uint8)
+            bayer8 = cv2.normalize(bayer8, None, 0, 255, cv2.NORM_MINMAX)
             # Debayer: IMX219 is RGGB pattern → OpenCV COLOR_BAYER_RG2BGR
             bgr_full = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
             # Center-crop from 3280x2464 to target resolution
