@@ -152,12 +152,20 @@ class StereoCameraNode(Node):
                         bayer8 = cv2.normalize(bayer8, None, 0, 255, cv2.NORM_MINMAX)
                         # Debayer SRGGB (RGGB) → BGR — confirmed by Waveshare IMX219-83 datasheet
                         bgr = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
-                        # Per-channel normalize = manual white balance (no ISP/AWB in raw V4L2 mode)
-                        b, g, r = cv2.split(bgr)
-                        b = cv2.normalize(b, None, 0, 255, cv2.NORM_MINMAX)
-                        g = cv2.normalize(g, None, 0, 255, cv2.NORM_MINMAX)
-                        r = cv2.normalize(r, None, 0, 255, cv2.NORM_MINMAX)
-                        frame = cv2.merge([b, g, r])
+                        # Gray-world white balance: scale each channel to match global mean.
+                        # More stable than per-channel NORM_MINMAX which is easily skewed by bright outliers.
+                        b_ch, g_ch, r_ch = cv2.split(bgr.astype(np.float32))
+                        b_mean = np.mean(b_ch) + 1e-6
+                        g_mean = np.mean(g_ch) + 1e-6
+                        r_mean = np.mean(r_ch) + 1e-6
+                        gray = (b_mean + g_mean + r_mean) / 3.0
+                        b_ch = np.clip(b_ch * (gray / b_mean), 0, 255).astype(np.uint8)
+                        g_ch = np.clip(g_ch * (gray / g_mean), 0, 255).astype(np.uint8)
+                        r_ch = np.clip(r_ch * (gray / r_mean), 0, 255).astype(np.uint8)
+                        frame = cv2.merge([b_ch, g_ch, r_ch])
+                        # Boost mid-tones (gamma < 1.0 = brighter). 0.45 is a significant boost.
+                        lut = np.array([min(255, int(255 * (i / 255.0) ** 0.45)) for i in range(256)], dtype=np.uint8)
+                        frame = lut[frame]
                         # Discard old frame, put latest
                         try:
                             frame_queue.get_nowait()
