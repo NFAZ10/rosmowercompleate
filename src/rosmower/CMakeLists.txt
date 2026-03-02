@@ -36,6 +36,7 @@ install(PROGRAMS
   scripts/rplidar_motor_control.py
   scripts/battery_splitter.py
   scripts/battery_monitor.py
+  scripts/cmd_vel_gate.py
   scripts/zone_manager.py
   scripts/zone_recorder.py
   scripts/relay_control_node.py

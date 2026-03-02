@@ -284,6 +284,15 @@ def generate_launch_description():
 
     
 
+    # --- cmd_vel gate: blocks motor commands while charger is connected ---
+    cmd_vel_gate_node = Node(
+        package='rosmower',
+        executable='cmd_vel_gate.py',
+        name='cmd_vel_gate',
+        output='screen',
+        parameters=[{'charging_current_threshold': -1.0}],
+    )
+
     # --- VESC Differential Drive Motor Controller ---
     vesc_pkg = get_package_share_directory('vesc_driver')
     vesc_launch = IncludeLaunchDescription(
@@ -328,6 +337,7 @@ def generate_launch_description():
         stereo_camera_node,        # Stereo CSI cameras (IMX219) - Now with HW accel
         battery_splitter_node,
         battery_monitor_node,
+        cmd_vel_gate_node,
         mavros_node,
         vesc_launch,          # VESC differential drive motor controller
 

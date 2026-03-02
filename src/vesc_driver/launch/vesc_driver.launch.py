@@ -31,7 +31,7 @@ def generate_launch_description():
     
     wheel_radius_arg = DeclareLaunchArgument(
         'wheel_radius',
-        default_value='0.0875',
+        default_value='0.1091',
         description='Wheel radius in meters (hoverboard wheel ~87.5mm)'
     )
     
@@ -50,14 +50,20 @@ def generate_launch_description():
     
     right_can_id_arg = DeclareLaunchArgument(
         'right_vesc_can_id',
-        default_value='47',
+        default_value='5',
         description='Right VESC CAN ID (connected via CAN bus)'
     )
     
     max_rpm_arg = DeclareLaunchArgument(
         'max_rpm',
-        default_value='3000',
-        description='Maximum ERPM (electrical RPM) safety limit'
+        default_value='2500',
+        description='Maximum ERPM (kept for reference; not used in duty cycle mode)'
+    )
+
+    max_lin_arg = DeclareLaunchArgument(
+        'max_lin',
+        default_value='1.0',
+        description='Linear velocity (m/s) that maps to 100% duty cycle'
     )
     
     pole_pairs_arg = DeclareLaunchArgument(
@@ -95,6 +101,30 @@ def generate_launch_description():
         default_value='true',
         description='Publish odometry from wheel encoders'
     )
+
+    caster_threshold_arg = DeclareLaunchArgument(
+        'caster_spin_threshold',
+        default_value='0.1',
+        description='Min |angular velocity| (rad/s) to trigger caster forward bias'
+    )
+
+    caster_bias_arg = DeclareLaunchArgument(
+        'caster_spin_bias',
+        default_value='0.15',
+        description='Forward velocity bias (m/s) during pre-spin burst to unstick rear caster'
+    )
+
+    kickstart_erpm_arg = DeclareLaunchArgument(
+        'min_erpm',
+        default_value='900',
+        description='Minimum ERPM the VESCs can spin (firmware threshold); non-zero commands are snapped up to this value'
+    )
+
+    kickstart_erpm_min_arg = DeclareLaunchArgument(
+        'erpm_deadband',
+        default_value='50',
+        description='ERPM values below this are treated as zero (full stop)'
+    )
     
     # VESC Driver Node
     #config_file = os.path.join(pkg_dir, 'config', 'vesc_driver.yaml')
@@ -104,6 +134,9 @@ def generate_launch_description():
         executable='vesc_driver_node',
         name='vesc_driver',
         output='screen',
+        remappings=[
+            ('/cmd_vel', '/cmd_vel_motors'),  # gate node controls access
+        ],
         parameters=[
             #config_file,
             {
@@ -114,12 +147,17 @@ def generate_launch_description():
             'left_vesc_can_id': LaunchConfiguration('left_vesc_can_id'),
             'right_vesc_can_id': LaunchConfiguration('right_vesc_can_id'),
             'max_rpm': LaunchConfiguration('max_rpm'),
+            'max_lin': LaunchConfiguration('max_lin'),
             'pole_pairs': LaunchConfiguration('pole_pairs'),
             'invert_left_motor': LaunchConfiguration('invert_left_motor'),
             'invert_right_motor': LaunchConfiguration('invert_right_motor'),
             'control_rate': LaunchConfiguration('control_rate'),
             'telemetry_rate': LaunchConfiguration('telemetry_rate'),
             'publish_odom': LaunchConfiguration('publish_odom'),
+            'caster_spin_threshold': LaunchConfiguration('caster_spin_threshold'),
+            'caster_spin_bias': LaunchConfiguration('caster_spin_bias'),
+            'min_erpm': LaunchConfiguration('min_erpm'),
+            'erpm_deadband': LaunchConfiguration('erpm_deadband'),
             'odom_frame_id': 'odom',
             'base_frame_id': 'base_link',
         }],  # inline params override YAML values
@@ -134,11 +172,16 @@ def generate_launch_description():
         left_can_id_arg,
         right_can_id_arg,
         max_rpm_arg,
+        max_lin_arg,
         pole_pairs_arg,
         invert_left_arg,
         invert_right_arg,
         control_rate_arg,
         telemetry_rate_arg,
         publish_odom_arg,
+        caster_threshold_arg,
+        caster_bias_arg,
+        kickstart_erpm_arg,
+        kickstart_erpm_min_arg,
         vesc_driver_node,
     ])
