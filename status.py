@@ -114,6 +114,15 @@ def compute_field(key: str, msg: Any):
         # Horizontal accuracy is sqrt of average of x and y variances
         h_accuracy = math.sqrt((cov[0] + cov[4]) / 2.0)
         return h_accuracy
+    if key == "charging_status":
+        current = getattr(msg, "current", None)
+        if current is None: return None
+        if current < -1.0:
+            return "🔌 CHARGING"
+        elif current > 0.5:
+            return "⚡ DISCHARGING"
+        else:
+            return "⏸ IDLE"
     if key == "rtk_status":
         # Decode GPS fix status into human-readable RTK status
         # Based on NavSatStatus constants and GPS quality mapping
@@ -247,6 +256,15 @@ def default_sources() -> List[SourceSpec]:
                 FieldSpec("Voltage", "voltage", "{:.2f} V"),
                 FieldSpec("Percentage", "percentage", "{:.1f} %"),
                 FieldSpec("Current", "current", "{:.2f} A"),
+                FieldSpec("Charge State", computed="charging_status"),
+            ],
+        ),
+        SourceSpec(
+            name="Battery Monitor",
+            topic="/battery/state",
+            type_str="std_msgs/msg/String",
+            fields=[
+                FieldSpec("State", "data", "{}"),
             ],
         ),
         SourceSpec(
@@ -403,6 +421,22 @@ def format_box(title: str, rows: List[Tuple[str, str]], age: Optional[float], wi
             # Special handling for battery voltage
             if label == "Voltage" and "V" in value:
                 value = colorize_battery_voltage(value)
+
+            # Special handling for charge state
+            if label == "Charge State":
+                if "CHARGING" in value:
+                    value = f"{Colors.GREEN}{value}{Colors.RESET}"
+                elif "DISCHARGING" in value:
+                    value = f"{Colors.YELLOW}{value}{Colors.RESET}"
+
+            # Special handling for battery monitor state
+            if label == "State":
+                if value in ("CHARGING", "CHARGED"):
+                    value = f"{Colors.GREEN}{value}{Colors.RESET}"
+                elif value == "CRITICAL":
+                    value = f"{Colors.RED}{value}{Colors.RESET}"
+                elif value == "LOW":
+                    value = f"{Colors.YELLOW}{value}{Colors.RESET}"
             
             # Calculate padding to align to box width
             # Account for ANSI codes by using visible length
