@@ -25,7 +25,7 @@ class BatteryMonitor(Node):
         self.declare_parameter('low_battery_threshold', 25.0)
         self.declare_parameter('critical_battery_threshold', 15.0)
         self.declare_parameter('charged_threshold', 95.0)
-        self.declare_parameter('charging_current_threshold', -0.1)
+        self.declare_parameter('charging_current_threshold', -1.0)  # Charger delivers ~7A; -1.0A is safe noise floor
         
         # Get parameters
         self.low_threshold = self.get_parameter('low_battery_threshold').value
@@ -47,6 +47,7 @@ class BatteryMonitor(Node):
         self.state_pub = self.create_publisher(String, '/battery/state', 10)
         self.low_battery_pub = self.create_publisher(Bool, '/battery/low', 10)
         self.mission_cmd_pub = self.create_publisher(String, '/mission/command', 10)
+        self.mode_cmd_pub = self.create_publisher(String, '/robot_mode_cmd', 10)
         
         # Timer for periodic state updates (1 Hz)
         self.create_timer(1.0, self.update_state)
@@ -88,6 +89,21 @@ class BatteryMonitor(Node):
         if old_state != self.state:
             self.get_logger().info(f'Battery state changed: {old_state} -> {self.state}')
             
+            # Lock out motors when charging starts
+            if self.state in [BatteryState.CHARGING, BatteryState.CHARGED]:
+                if old_state not in [BatteryState.CHARGING, BatteryState.CHARGED]:
+                    self.get_logger().info('🔌 Charger connected — switching to charging mode (motors locked)')
+                    mode_cmd = String()
+                    mode_cmd.data = 'charging'
+                    self.mode_cmd_pub.publish(mode_cmd)
+
+            # Release charging lock when charger is disconnected
+            elif old_state in [BatteryState.CHARGING, BatteryState.CHARGED]:
+                self.get_logger().info('🔋 Charger disconnected — returning to idle')
+                mode_cmd = String()
+                mode_cmd.data = 'idle'
+                self.mode_cmd_pub.publish(mode_cmd)
+
             # Trigger mission commands on critical transitions
             if self.state == BatteryState.CRITICAL and old_state not in [BatteryState.CHARGING, BatteryState.CHARGED]:
                 self.get_logger().error('⚠️  CRITICAL BATTERY! Emergency dock!')

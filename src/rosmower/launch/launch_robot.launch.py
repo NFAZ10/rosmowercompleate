@@ -44,6 +44,17 @@ def generate_launch_description():
             'percent_scale_0_100': True
         }]
     )
+
+    # --- Battery Monitor Node (charging detection + motor lockout) ---
+    battery_monitor_node = Node(
+        package='rosmower',
+        executable='battery_monitor.py',
+        name='battery_monitor',
+        output='screen',
+        parameters=[{
+            'charging_current_threshold': -1.0,
+        }]
+    )
     # --- Stereo CSI Cameras (IMX219) ---
     stereo_camera_node = Node(
         package='stereo_camera_viewer',
@@ -316,6 +327,7 @@ def generate_launch_description():
         rplidar_node,           # RPlidar C1 with motor control - ENABLED
         stereo_camera_node,        # Stereo CSI cameras (IMX219) - Now with HW accel
         battery_splitter_node,
+        battery_monitor_node,
         mavros_node,
         vesc_launch,          # VESC differential drive motor controller
 
