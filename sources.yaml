@@ -5,6 +5,13 @@
     - {label: Voltage, path: voltage, fmt: "{:.2f} V"}
     - {label: Pct,     path: percentage, fmt: "{:.0%}"}
     - {label: Current, path: current, fmt: "{:.2f} Ah"}
+    - {label: Charge State, computed: charging_status, fmt: "{}"}
+
+- name: Battery Monitor
+  topic: /battery/state
+  type: std_msgs/msg/String
+  fields:
+    - {label: State, path: data, fmt: "{}"}
 - name: GPS
   topic: /gps/fix
   type: sensor_msgs/msg/NavSatFix

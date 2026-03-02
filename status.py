@@ -117,6 +117,12 @@ def compute_field(key: str, msg: Any):
     if key == "charging_status":
         current = getattr(msg, "current", None)
         if current is None: return None
+        try:
+            current = float(current)
+        except (TypeError, ValueError):
+            return None
+        if math.isnan(current) or math.isinf(current):
+            return "? No current data"
         if current < -1.0:
             return "🔌 CHARGING"
         elif current > 0.5:
