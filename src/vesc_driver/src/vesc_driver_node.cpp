@@ -3,6 +3,7 @@
 #include <geometry_msgs/msg/twist.hpp>
 #include <sensor_msgs/msg/joint_state.hpp>
 #include <nav_msgs/msg/odometry.hpp>
+#include <std_msgs/msg/float32.hpp>
 #include <tf2/LinearMath/Quaternion.h>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
 #include <cmath>
@@ -29,12 +30,17 @@ public:
     declare_parameter("right_vesc_can_id", 47);  // VESC ID 1 (connected via CAN)
     declare_parameter("invert_left_motor", false);
     declare_parameter("invert_right_motor", false);
-    declare_parameter("max_rpm", 3000);  // Maximum ERPM (safe limit)
+    declare_parameter("max_rpm", 3000);  // kept for reference; not used in duty cycle mode
+    declare_parameter("max_lin", 1.0);   // m/s at 100% duty cycle — scale factor for velocity→duty
     declare_parameter("control_rate", 50.0);  // Hz
     declare_parameter("telemetry_rate", 10.0);  // Hz
     declare_parameter("publish_odom", true);
     declare_parameter("odom_frame_id", "odom");
     declare_parameter("base_frame_id", "base_link");
+    declare_parameter("caster_spin_threshold", 0.1);  // rad/s — min |omega| to apply caster bias
+    declare_parameter("caster_spin_bias", 0.05);      // m/s forward bias to unstick rear caster
+    declare_parameter("min_erpm", 900);    // minimum ERPM the VESC can spin (firmware threshold)
+    declare_parameter("erpm_deadband", 50); // ERPM below this is treated as zero (full stop)
 
     // Get parameters
     serial_port_ = get_parameter("serial_port").as_string();
@@ -68,6 +74,14 @@ public:
       "/cmd_vel", 10,
       std::bind(&VescDriverNode::cmdVelCallback, this, std::placeholders::_1));
 
+    // Direct charging lockout: subscribe to /current from battery_splitter
+    // Stops motors immediately when charger is connected (no intermediate nodes needed)
+    declare_parameter("charging_lockout_threshold", -1.0);  // Amps; negative = charging
+    charging_threshold_ = get_parameter("charging_lockout_threshold").as_double();
+    current_sub_ = create_subscription<std_msgs::msg::Float32>(
+      "/current", 10,
+      std::bind(&VescDriverNode::batteryCurrentCallback, this, std::placeholders::_1));
+
     // Publishers
     joint_state_pub_ = create_publisher<sensor_msgs::msg::JointState>("joint_states", 10);
     
@@ -94,7 +108,7 @@ public:
 
   ~VescDriverNode() {
     // Stop motors on shutdown
-    setMotorRPM(0, 0);
+    setMotorERPM(0, 0);
   }
 
 private:
@@ -104,7 +118,27 @@ private:
     last_cmd_vel_time_ = now();
   }
 
+  void batteryCurrentCallback(const std_msgs::msg::Float32::SharedPtr msg) {
+    float current = msg->data;
+    if (!std::isfinite(current)) return;
+    bool charging_now = current < static_cast<float>(charging_threshold_);
+    if (charging_now && !is_charging_) {
+      setMotorERPM(0, 0);
+      RCLCPP_WARN(get_logger(),
+        "🔌 Charger detected (%.1fA) — motors LOCKED", current);
+    } else if (!charging_now && is_charging_) {
+      RCLCPP_INFO(get_logger(), "🔋 Charger removed — motors unlocked");
+    }
+    is_charging_ = charging_now;
+  }
+
   void controlLoop() {
+    // Charging lockout — refuse all motion while charger is connected
+    if (is_charging_) {
+      setMotorERPM(0, 0);
+      return;
+    }
+
     geometry_msgs::msg::Twist cmd_vel;
     {
       std::lock_guard<std::mutex> lock(cmd_vel_mutex_);
@@ -123,38 +157,66 @@ private:
     // v_right = v + (w * L / 2)
     double v = cmd_vel.linear.x;
     double w = cmd_vel.angular.z;
-    
-    double v_left = v - (w * wheel_separation_ / 2.0);
+
+    // Caster pre-spin burst: when a zero-linear spin is requested, first drive
+    // forward for a short burst to swivel the rear caster, THEN allow the spin.
+    double caster_threshold = get_parameter("caster_spin_threshold").as_double();
+    double caster_bias      = get_parameter("caster_spin_bias").as_double();
+    double caster_burst_sec = 0.4;  // seconds of forward burst before spinning
+
+    if (v == 0.0 && std::abs(w) > caster_threshold) {
+      if (caster_state_ == CasterState::IDLE) {
+        // Start a forward burst; defer the spin
+        caster_state_    = CasterState::BURSTING;
+        caster_burst_end_ = now() + rclcpp::Duration::from_seconds(caster_burst_sec);
+        caster_pending_w_ = w;
+      }
+      if (caster_state_ == CasterState::BURSTING) {
+        if (now() < caster_burst_end_) {
+          // Still bursting — drive forward only, no rotation yet
+          v = caster_bias;
+          w = 0.0;
+        } else {
+          // Burst done — execute the spin
+          caster_state_ = CasterState::IDLE;
+          w = caster_pending_w_;
+        }
+      }
+    } else {
+      // Normal command; reset burst state
+      caster_state_ = CasterState::IDLE;
+    }
+
+    double v_left  = v - (w * wheel_separation_ / 2.0);
     double v_right = v + (w * wheel_separation_ / 2.0);
 
-    // Convert linear velocity to wheel angular velocity (rad/s)
-    double omega_left = v_left / wheel_radius_;
-    double omega_right = v_right / wheel_radius_;
+    // Convert wheel linear velocity (m/s) to ERPM.
+    // ERPM = (v / wheel_radius) * (60 / 2π) * pole_pairs
+    double max_lin    = get_parameter("max_lin").as_double();
+    double erpm_scale = static_cast<double>(pole_pairs_) * 60.0 / (2.0 * M_PI * wheel_radius_);
 
-    // Convert rad/s to RPM
-    double rpm_left = omega_left * 60.0 / (2.0 * M_PI);
-    double rpm_right = omega_right * 60.0 / (2.0 * M_PI);
+    int32_t erpm_left  = static_cast<int32_t>(std::clamp(v_left,  -max_lin, max_lin) * erpm_scale);
+    int32_t erpm_right = static_cast<int32_t>(std::clamp(v_right, -max_lin, max_lin) * erpm_scale);
 
-    // Convert RPM to ERPM (Electrical RPM = RPM × pole_pairs)
-    int32_t erpm_left = static_cast<int32_t>(rpm_left * pole_pairs_);
-    int32_t erpm_right = static_cast<int32_t>(rpm_right * pole_pairs_);
-
-    // Apply motor inversions if configured
-    if (invert_left_motor_) erpm_left = -erpm_left;
+    // Apply motor inversions
+    if (invert_left_motor_)  erpm_left  = -erpm_left;
     if (invert_right_motor_) erpm_right = -erpm_right;
 
-    // Clamp to max RPM
-    erpm_left = std::clamp(erpm_left, -max_rpm_, max_rpm_);
-    erpm_right = std::clamp(erpm_right, -max_rpm_, max_rpm_);
+    // Enforce minimum ERPM: VESCs cannot spin below a hardware threshold.
+    // Snap any non-zero command up to min_erpm so turns actually execute.
+    int32_t min_erpm     = get_parameter("min_erpm").as_int();
+    int32_t erpm_deadband = get_parameter("erpm_deadband").as_int();
+    erpm_left  = snapToMinERPM(erpm_left,  min_erpm, erpm_deadband);
+    erpm_right = snapToMinERPM(erpm_right, min_erpm, erpm_deadband);
 
     // Debug logging
     if (v != 0.0 || w != 0.0) {
       RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 500,
-        "cmd_vel: v=%.3f, w=%.3f -> ERPM: L=%d, R=%d", v, w, erpm_left, erpm_right);
+        "cmd_vel: v=%.3f w=%.3f -> ERPM L=%d R=%d", v, w, erpm_left, erpm_right);
     }
 
-    // Send commands
-    setMotorRPM(erpm_left, erpm_right);
+    // Send ERPM commands
+    setMotorERPM(erpm_left, erpm_right);
 
     // Process any VESC responses
     vesc_->processResponse(5);
@@ -189,18 +251,25 @@ private:
     }
   }
 
-  void setMotorRPM(int32_t left_erpm, int32_t right_erpm) {
-    // Send to left motor (VESC ID 0 via USB or CAN)
+  void setMotorERPM(int32_t left_erpm, int32_t right_erpm) {
     if (left_can_id_ == 0) {
       vesc_->setRPM(left_erpm);
     } else {
       vesc_->setRPMCAN(left_can_id_, left_erpm);
     }
-
-    // Send to right motor (VESC ID 1 via CAN)
     if (right_can_id_ != left_can_id_) {
       vesc_->setRPMCAN(right_can_id_, right_erpm);
     }
+  }
+
+  // Snap ERPM to minimum threshold so VESCs actually spin.
+  // Values in the deadband are zeroed; values between deadband and min_erpm are
+  // snapped up to min_erpm preserving sign.
+  static int32_t snapToMinERPM(int32_t erpm, int32_t min_erpm, int32_t deadband) {
+    int32_t abs_erpm = std::abs(erpm);
+    if (abs_erpm < deadband)  return 0;
+    if (abs_erpm < min_erpm)  return (erpm > 0) ? min_erpm : -min_erpm;
+    return erpm;
   }
 
   void publishJointState() {
@@ -316,6 +385,7 @@ private:
 
   // ROS interfaces
   rclcpp::Subscription<geometry_msgs::msg::Twist>::SharedPtr cmd_vel_sub_;
+  rclcpp::Subscription<std_msgs::msg::Float32>::SharedPtr current_sub_;
   rclcpp::Publisher<sensor_msgs::msg::JointState>::SharedPtr joint_state_pub_;
   rclcpp::Publisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub_;
   rclcpp::TimerBase::SharedPtr control_timer_;
@@ -325,6 +395,14 @@ private:
   geometry_msgs::msg::Twist last_cmd_vel_;
   rclcpp::Time last_cmd_vel_time_{0, 0, RCL_ROS_TIME};
   std::mutex cmd_vel_mutex_;
+  bool is_charging_{false};
+  double charging_threshold_{-1.0};
+
+  // Caster pre-spin burst state
+  enum class CasterState { IDLE, BURSTING };
+  CasterState caster_state_{CasterState::IDLE};
+  rclcpp::Time caster_burst_end_{0, 0, RCL_ROS_TIME};
+  double caster_pending_w_{0.0};
 };
 
 } // namespace vesc_driver
