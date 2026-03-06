@@ -144,10 +144,10 @@ case "$1" in
     "recorder"|"zone-recorder")
         if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
             echo "Launching Zone Recorder in main container (detached)..."
-            docker exec -d rosmower_robot bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch rosmower zone_recorder.launch.py"
+            docker exec -d rosmower_launch bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch rosmower zone_recorder.launch.py"
         else
             echo "Launching Zone Recorder in main container..."
-            docker exec -it rosmower_robot bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch rosmower zone_recorder.launch.py"
+            docker exec -it rosmower_launch bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch rosmower zone_recorder.launch.py"
         fi
         ;;
     "rqt")
