@@ -326,6 +326,8 @@ def generate_launch_description():
         DeclareLaunchArgument('arm', default_value='true', description='Enable motor arming if true'),
         DeclareLaunchArgument('use_vesc', default_value='true',
                               description='Launch VESC differential drive motor controller'),
+        DeclareLaunchArgument('use_rosbridge', default_value='true',
+                              description='Launch rosbridge websocket for web UI (port 9090)'),
 
         quiet_env,
         rsp,
@@ -340,7 +342,6 @@ def generate_launch_description():
         cmd_vel_gate_node,
         mavros_node,
         vesc_launch,          # VESC differential drive motor controller
-
-        
+        rosbridge_node,       # rosbridge websocket for web UI (port 9090)
     ])
 

@@ -72,7 +72,7 @@ class ZoneRecorder(Node):
         # Declare parameters
         self.declare_parameter('waypoint_min_distance', 0.5)  # meters
         self.declare_parameter('simplification_tolerance', 0.3)  # meters
-        self.declare_parameter('gps_accuracy_threshold', 2.0)  # meters
+        self.declare_parameter('gps_accuracy_threshold', 5.0)  # meters (5.0 works for standard GPS; use 0.1 with RTK)
         self.declare_parameter('visual_odometry_enabled', False)
         self.declare_parameter('frame_id', 'map')
         self.declare_parameter('publish_rate', 2.0)  # Hz

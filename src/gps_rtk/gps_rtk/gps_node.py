@@ -27,7 +27,7 @@ class GPSNode(Node):
         super().__init__(node_name)
         
         # Declare parameters
-        self.declare_parameter('serial_port', '/dev/ttyAMA0')  # Default UART on 40-pin header
+        self.declare_parameter('serial_port', '/dev/ttyTHS1')  # Matches launch file default and docker-compose device mapping
         self.declare_parameter('baud_rate', 9600)  # Common GPS baud rate
         self.declare_parameter('frame_id', 'gps')
         self.declare_parameter('publish_rate', 10.0)
