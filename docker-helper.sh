@@ -141,6 +141,15 @@ case "$1" in
             $COMPOSE_CMD --profile zenoh run --rm --name rosmower_zenoh zenoh bash -c "export ZENOH_ROUTER_CONFIG_URI=/ws_dev/zenoh-router.json5 && ros2 run rmw_zenoh_cpp rmw_zenohd"
         fi
         ;;
+    "mission")
+        if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
+            echo "Launching OpenMower Mission in main container (detached)..."
+            docker exec -d rosmower_launch bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch openmower_mission openmower_mission.launch.py"
+        else
+            echo "Launching OpenMower Mission in main container..."
+            docker exec -it rosmower_launch bash -c "source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && ros2 launch openmower_mission openmower_mission.launch.py"
+        fi
+        ;;
     "recorder"|"zone-recorder")
         if [ "$2" == "-d" ] || [ "$2" == "--detached" ]; then
             echo "Launching Zone Recorder in main container (detached)..."
@@ -216,7 +225,8 @@ case "$1" in
         echo "  rtk [-d|--detached] - Launch GPS with RTK enabled (default server)"
         echo "  rtk-alt [-d|--detached] - Launch GPS with RTK enabled (alternate server)"
         echo "  zenoh [-d|--detached] - Start Zenoh router (optional: detached mode)"
-        echo "  recorder [-d|--detached] - Launch Zone Recorder for boundary recording (optional: detached)"
+        echo "  mission [-d|--detached]  - Launch OpenMower Mission executor (optional: detached)"
+  echo "  recorder [-d|--detached] - Launch Zone Recorder for boundary recording (optional: detached)"
         echo "  rqt [-d|--detached] - Launch RQt GUI tools (optional: detached mode)"
         echo "  teleop  - Launch teleop keyboard controller"
         echo "  shell   - Open shell in running container"

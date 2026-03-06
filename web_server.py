@@ -125,14 +125,14 @@ def get_status():
 @app.route('/api/command/<cmd>')
 def execute_command(cmd):
     """Execute docker-helper.sh commands."""
-    allowed_commands = ['stat', 'gps', 'launch', 'bridge', 'rqt', 'stop', 'restart', 'cleanup']
+    allowed_commands = ['stat', 'gps', 'launch', 'bridge', 'rqt', 'stop', 'restart', 'cleanup', 'mission']
     
     if cmd not in allowed_commands:
         return jsonify({'error': f'Command "{cmd}" not allowed'}), 400
     
     try:
-        # Special handling for launch and bridge - run in background
-        if cmd in ['launch', 'bridge']:
+        # Special handling for launch, bridge, and mission - run in background
+        if cmd in ['launch', 'bridge', 'mission']:
             with process_lock:
                 # Kill any existing process of same type
                 if cmd in running_processes:

@@ -43,8 +43,16 @@ A ROS 2-based autonomous mower robot platform integrating motor control, GPS/RTK
   - 🔋 Battery Indicator: Visual battery level with percentage (green >40%, yellow 20-40%, red flashing <20%)
 - **ROS Bridge Connection**: Uses roslib.js to connect to rosbridge_websocket (default: `ws://10.31.18.195:9090`)
 - **Mode Control Buttons**: Set robot operating modes via `/robot_mode_cmd` topic (idle, charging, mowing, full)
+- **Mission Controls** (🌿 section below mode buttons):
+  - 🚀 **Launch Mission**: Calls `/api/command/mission` → runs `openmower_mission.launch.py` inside the robot container
+  - ▶️ **Start Mowing**: Publishes `START` to `/mission/command`
+  - 🏠 **Return to Dock**: Publishes `RETURN_TO_DOCK` to `/mission/command`
+  - 🆘 **Emergency Dock**: Publishes `EMERGENCY_DOCK` to `/mission/command`
+  - 🔋 **Mark Charged**: Publishes `BATTERY_CHARGED` to `/mission/command`
+  - 🗺️ **Zone Manager**: Opens `/zones` page in a new tab
+  - Live status panel: shows Mission State (color-coded), Active Zone, and Progress
 - **System Controls**: Launch, status, GPS, bridge, restart, stop Docker container
-- **Real-time Updates**: Subscribes to `/robot_mode`, `/battery_state`, `/gps/fix` topics for live status
+- **Real-time Updates**: Subscribes to `/robot_mode`, `/battery_state`, `/gps/fix`, `/mission/state`, `/mission/active_zone`, `/mission/progress` topics for live status
 
 **Status Monitor Page** (`src/rosmower/web/status.html`):
 - Node status dashboard at `http://<robot-ip>:8080/status`
@@ -58,7 +66,7 @@ A ROS 2-based autonomous mower robot platform integrating motor control, GPS/RTK
 **API Endpoints** (REST):
 - `/api/status`: Container and rosbridge status
 - `/api/ros/nodes`: List all running ROS nodes and topics (reads from Docker container)
-- `/api/command/<cmd>`: Execute docker-helper.sh commands (launch, bridge, gps, stat, stop, restart)
+- `/api/command/<cmd>`: Execute docker-helper.sh commands (launch, bridge, gps, stat, stop, restart, **mission**)
 - `/api/docker/start|stop|restart`: Docker container lifecycle management
 - `/api/process/<name>/status`: Background process status (for launch/bridge commands)
 
@@ -176,6 +184,7 @@ Use `COLCON_IGNORE` file in package root to skip building (e.g., `diffdrive_ardu
 
 | Task | How-To |
 |------|--------|
+| **Run autonomous mowing mission** | Web UI: click 🚀 Launch Mission then ▶️ Start Mowing; or CLI: `./docker-helper.sh mission -d` then publish `START` to `/mission/command` |
 | **Add new sensor node** | Copy `rosmower/scripts/tof_guard.py` template; declare params, publish sensor_msgs, add launch file entry |
 | **Debug node communication** | `ros2 topic list`, `ros2 topic echo /topic_name`, `ros2 node info /node_name`, `ros2 topic hz /topic_name` |
 | **Monitor system status** | Run `./status.py` for live terminal dashboard with color-coded status (battery, GPS, IMU, nodes) |
