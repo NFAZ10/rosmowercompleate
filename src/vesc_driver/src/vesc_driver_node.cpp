@@ -37,10 +37,6 @@ public:
     declare_parameter("publish_odom", true);
     declare_parameter("odom_frame_id", "odom");
     declare_parameter("base_frame_id", "base_link");
-    declare_parameter("caster_spin_threshold", 0.1);  // rad/s — min |omega| to apply caster bias
-    declare_parameter("caster_spin_bias", 0.05);      // m/s forward bias to unstick rear caster
-    declare_parameter("min_erpm", 900);    // minimum ERPM the VESC can spin (firmware threshold)
-    declare_parameter("erpm_deadband", 50); // ERPM below this is treated as zero (full stop)
 
     // Get parameters
     serial_port_ = get_parameter("serial_port").as_string();
@@ -158,35 +154,6 @@ private:
     double v = cmd_vel.linear.x;
     double w = cmd_vel.angular.z;
 
-    // Caster pre-spin burst: when a zero-linear spin is requested, first drive
-    // forward for a short burst to swivel the rear caster, THEN allow the spin.
-    double caster_threshold = get_parameter("caster_spin_threshold").as_double();
-    double caster_bias      = get_parameter("caster_spin_bias").as_double();
-    double caster_burst_sec = 0.4;  // seconds of forward burst before spinning
-
-    if (v == 0.0 && std::abs(w) > caster_threshold) {
-      if (caster_state_ == CasterState::IDLE) {
-        // Start a forward burst; defer the spin
-        caster_state_    = CasterState::BURSTING;
-        caster_burst_end_ = now() + rclcpp::Duration::from_seconds(caster_burst_sec);
-        caster_pending_w_ = w;
-      }
-      if (caster_state_ == CasterState::BURSTING) {
-        if (now() < caster_burst_end_) {
-          // Still bursting — drive forward only, no rotation yet
-          v = caster_bias;
-          w = 0.0;
-        } else {
-          // Burst done — execute the spin
-          caster_state_ = CasterState::IDLE;
-          w = caster_pending_w_;
-        }
-      }
-    } else {
-      // Normal command; reset burst state
-      caster_state_ = CasterState::IDLE;
-    }
-
     double v_left  = v - (w * wheel_separation_ / 2.0);
     double v_right = v + (w * wheel_separation_ / 2.0);
 
@@ -201,13 +168,6 @@ private:
     // Apply motor inversions
     if (invert_left_motor_)  erpm_left  = -erpm_left;
     if (invert_right_motor_) erpm_right = -erpm_right;
-
-    // Enforce minimum ERPM: VESCs cannot spin below a hardware threshold.
-    // Snap any non-zero command up to min_erpm so turns actually execute.
-    int32_t min_erpm     = get_parameter("min_erpm").as_int();
-    int32_t erpm_deadband = get_parameter("erpm_deadband").as_int();
-    erpm_left  = snapToMinERPM(erpm_left,  min_erpm, erpm_deadband);
-    erpm_right = snapToMinERPM(erpm_right, min_erpm, erpm_deadband);
 
     // Debug logging
     if (v != 0.0 || w != 0.0) {
@@ -260,16 +220,6 @@ private:
     if (right_can_id_ != left_can_id_) {
       vesc_->setRPMCAN(right_can_id_, right_erpm);
     }
-  }
-
-  // Snap ERPM to minimum threshold so VESCs actually spin.
-  // Values in the deadband are zeroed; values between deadband and min_erpm are
-  // snapped up to min_erpm preserving sign.
-  static int32_t snapToMinERPM(int32_t erpm, int32_t min_erpm, int32_t deadband) {
-    int32_t abs_erpm = std::abs(erpm);
-    if (abs_erpm < deadband)  return 0;
-    if (abs_erpm < min_erpm)  return (erpm > 0) ? min_erpm : -min_erpm;
-    return erpm;
   }
 
   void publishJointState() {
@@ -398,11 +348,7 @@ private:
   bool is_charging_{false};
   double charging_threshold_{-1.0};
 
-  // Caster pre-spin burst state
-  enum class CasterState { IDLE, BURSTING };
-  CasterState caster_state_{CasterState::IDLE};
-  rclcpp::Time caster_burst_end_{0, 0, RCL_ROS_TIME};
-  double caster_pending_w_{0.0};
+
 };
 
 } // namespace vesc_driver

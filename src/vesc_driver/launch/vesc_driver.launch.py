@@ -102,30 +102,6 @@ def generate_launch_description():
         description='Publish odometry from wheel encoders'
     )
 
-    caster_threshold_arg = DeclareLaunchArgument(
-        'caster_spin_threshold',
-        default_value='0.1',
-        description='Min |angular velocity| (rad/s) to trigger caster forward bias'
-    )
-
-    caster_bias_arg = DeclareLaunchArgument(
-        'caster_spin_bias',
-        default_value='0.15',
-        description='Forward velocity bias (m/s) during pre-spin burst to unstick rear caster'
-    )
-
-    kickstart_erpm_arg = DeclareLaunchArgument(
-        'min_erpm',
-        default_value='900',
-        description='Minimum ERPM the VESCs can spin (firmware threshold); non-zero commands are snapped up to this value'
-    )
-
-    kickstart_erpm_min_arg = DeclareLaunchArgument(
-        'erpm_deadband',
-        default_value='50',
-        description='ERPM values below this are treated as zero (full stop)'
-    )
-    
     # VESC Driver Node
     #config_file = os.path.join(pkg_dir, 'config', 'vesc_driver.yaml')
 
@@ -154,10 +130,6 @@ def generate_launch_description():
             'control_rate': LaunchConfiguration('control_rate'),
             'telemetry_rate': LaunchConfiguration('telemetry_rate'),
             'publish_odom': LaunchConfiguration('publish_odom'),
-            'caster_spin_threshold': LaunchConfiguration('caster_spin_threshold'),
-            'caster_spin_bias': LaunchConfiguration('caster_spin_bias'),
-            'min_erpm': LaunchConfiguration('min_erpm'),
-            'erpm_deadband': LaunchConfiguration('erpm_deadband'),
             'odom_frame_id': 'odom',
             'base_frame_id': 'base_link',
         }],  # inline params override YAML values
@@ -179,9 +151,5 @@ def generate_launch_description():
         control_rate_arg,
         telemetry_rate_arg,
         publish_odom_arg,
-        caster_threshold_arg,
-        caster_bias_arg,
-        kickstart_erpm_arg,
-        kickstart_erpm_min_arg,
         vesc_driver_node,
     ])
