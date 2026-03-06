@@ -4,7 +4,7 @@ ROS Mower Web Server
 Serves the mode control interface and provides API for system control
 """
 
-from flask import Flask, render_template, jsonify, send_from_directory
+from flask import Flask, render_template, jsonify, send_from_directory, request
 from flask_cors import CORS
 import subprocess
 import os
@@ -12,6 +12,7 @@ import signal
 import threading
 import time
 import socket
+from pathlib import Path
 
 app = Flask(__name__, 
             template_folder='/mnt/nova_ssd/rosmowercompleate/src/rosmower/web',
@@ -78,6 +79,11 @@ def zone_manager_page():
 def zone_recorder_page():
     """Serve the zone recorder page."""
     return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'zone_recorder.html')
+
+@app.route('/mission-setup')
+def mission_setup_page():
+    """Serve the mission setup page (dock position, zones, mission params)."""
+    return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'mission_setup.html')
 
 @app.route('/api/ip')
 def get_ip():
@@ -510,6 +516,134 @@ def delete_zone(zone_id):
         })
     except Exception as e:
         return jsonify({'success': False, 'message': str(e)}), 500
+
+# ── Dock API ──────────────────────────────────────────────────────────────────
+
+DOCK_FILE = Path('/mnt/nova_ssd/rosmowercompleate/zones/dock.yaml')
+MISSION_PARAMS_FILE = Path('/mnt/nova_ssd/rosmowercompleate/src/openmower_mission/config/mission_params.yaml')
+
+@app.route('/api/dock', methods=['GET'])
+def get_dock():
+    """Return current dock position from dock.yaml."""
+    import yaml
+    try:
+        if not DOCK_FILE.exists():
+            return jsonify({'success': True, 'dock': None, 'message': 'No dock file found'})
+        with open(DOCK_FILE, 'r') as f:
+            data = yaml.safe_load(f)
+        return jsonify({'success': True, 'dock': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/dock/save', methods=['POST'])
+def save_dock():
+    """Write dock position to dock.yaml."""
+    import yaml, math
+    try:
+        body = request.json
+        if body is None or 'x' not in body or 'y' not in body:
+            return jsonify({'success': False, 'message': 'x and y are required'}), 400
+        DOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
+        data = {
+            'frame_id': body.get('frame_id', 'map'),
+            'x': round(float(body['x']), 4),
+            'y': round(float(body['y']), 4),
+            'yaw': round(float(body.get('yaw', 0.0)), 4),
+        }
+        with open(DOCK_FILE, 'w') as f:
+            yaml.dump(data, f, default_flow_style=False)
+        return jsonify({'success': True, 'message': 'Dock position saved', 'dock': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/dock/command', methods=['POST'])
+def dock_command():
+    """Publish a command to /dock/command ROS topic."""
+    try:
+        body = request.json
+        cmd = (body or {}).get('command', 'SET_DOCK_HERE').strip().upper()
+        allowed = {'SET_DOCK_HERE', 'RETURN_TO_DOCK', 'CLEAR_DOCK'}
+        if cmd not in allowed:
+            return jsonify({'success': False, 'message': f'Unknown command: {cmd}'}), 400
+        container = get_ros_container()
+        result = subprocess.run(
+            ['docker', 'exec', container, 'bash', '-c',
+             f'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && '
+             f'ros2 topic pub --once /dock/command std_msgs/msg/String "{{data: \'{cmd}\'}}"'],
+            capture_output=True, text=True, timeout=15
+        )
+        if result.returncode == 0:
+            return jsonify({'success': True, 'message': f'Sent: {cmd}'})
+        return jsonify({'success': False, 'message': result.stderr or result.stdout}), 500
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/zones/<zone_id>', methods=['PATCH'])
+def update_zone(zone_id):
+    """Patch a single zone's enabled/priority/name fields."""
+    import yaml
+    try:
+        body = request.json or {}
+        zones_dir = Path('/mnt/nova_ssd/rosmowercompleate/zones')
+        file_path = zones_dir / f'{zone_id}.yaml'
+        if not file_path.exists():
+            return jsonify({'success': False, 'message': f'Zone {zone_id} not found'}), 404
+        with open(file_path, 'r') as f:
+            data = yaml.safe_load(f)
+        for field in ('enabled', 'priority', 'name'):
+            if field in body:
+                data[field] = body[field]
+        with open(file_path, 'w') as f:
+            yaml.dump(data, f, default_flow_style=False)
+        return jsonify({'success': True, 'message': f'Zone {zone_id} updated', 'zone': data})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/mission/params', methods=['GET'])
+def get_mission_params():
+    """Return editable mission parameters."""
+    import yaml
+    EDITABLE_KEYS = [
+        'stripe_width_m', 'overlap_m', 'approach_angle_deg', 'waypoint_spacing_m',
+        'waypoint_goal_tolerance_m', 'stuck_timeout_sec', 'max_recovery_attempts',
+        'battery_return_threshold_pct', 'path_generation_timeout_sec',
+        'dock_staging_dist_m', 'loop_hz',
+    ]
+    try:
+        if not MISSION_PARAMS_FILE.exists():
+            return jsonify({'success': False, 'message': 'mission_params.yaml not found'}), 404
+        with open(MISSION_PARAMS_FILE, 'r') as f:
+            full = yaml.safe_load(f)
+        params = full.get('/**', {}).get('ros__parameters', {})
+        return jsonify({'success': True, 'params': {k: params[k] for k in EDITABLE_KEYS if k in params}})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+@app.route('/api/mission/params', methods=['POST'])
+def save_mission_params():
+    """Save updated mission parameters back to mission_params.yaml."""
+    import yaml
+    ALLOWED_KEYS = {
+        'stripe_width_m', 'overlap_m', 'approach_angle_deg', 'waypoint_spacing_m',
+        'waypoint_goal_tolerance_m', 'stuck_timeout_sec', 'max_recovery_attempts',
+        'battery_return_threshold_pct', 'path_generation_timeout_sec',
+        'dock_staging_dist_m', 'loop_hz',
+    }
+    try:
+        updates = request.json or {}
+        invalid = set(updates.keys()) - ALLOWED_KEYS
+        if invalid:
+            return jsonify({'success': False, 'message': f'Unknown params: {invalid}'}), 400
+        with open(MISSION_PARAMS_FILE, 'r') as f:
+            full = yaml.safe_load(f)
+        params = full.setdefault('/**', {}).setdefault('ros__parameters', {})
+        for k, v in updates.items():
+            params[k] = v
+        with open(MISSION_PARAMS_FILE, 'w') as f:
+            yaml.dump(full, f, default_flow_style=False)
+        return jsonify({'success': True, 'message': 'Mission parameters saved'})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)}), 500
 
 @app.route('/api/battery/status', methods=['GET'])
 def get_battery_status():

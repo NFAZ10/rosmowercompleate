@@ -538,6 +538,7 @@
         <div class="status-bar-right">
             <a href="/zones" class="nav-link">🗺️ Zones</a>
             <a href="/zones/recorder" class="nav-link">📹 Record Zones</a>
+            <a href="/mission-setup" class="nav-link">⚙️ Mission Setup</a>
             <a href="/routes" class="nav-link">🛣️ Routes</a>
             <a href="/status" class="nav-link">📊 Status</a>
             <a href="/camera" class="nav-link">📹 Camera Control</a>
@@ -618,8 +619,8 @@
                 <button class="control-btn btn-mission-emerg" onclick="sendMissionCommand('BATTERY_CHARGED')" style="background: linear-gradient(135deg, #4CAF50 0%, #2e7d32 100%);">
                     🔋 Mark Charged
                 </button>
-                <button class="control-btn" onclick="window.open('/zones', '_blank')" style="background: linear-gradient(135deg, #ff9800 0%, #e65100 100%);">
-                    🗺️ Zone Manager
+                <button class="control-btn" onclick="window.location.href='/mission-setup'" style="background: linear-gradient(135deg, #ff9800 0%, #e65100 100%);">
+                    ⚙️ Mission Setup
                 </button>
             </div>
         </div>
