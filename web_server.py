@@ -27,7 +27,7 @@ process_lock = threading.Lock()
 
 def get_ros_container():
     """Get the name of the running ROS container (prefer rosmower_launch, then rosmower_robot, then others)."""
-    for container in ['rosmower_launch', 'rosmower_robot', 'rosmower_gps_zones', 'rosmower_rtk', 'rosmower_bridge']:
+    for container in ['rosmower_launch_noarm', 'rosmower_launch', 'rosmower_robot', 'rosmower_gps_zones', 'rosmower_rtk', 'rosmower_bridge']:
         result = subprocess.run(
             ['docker', 'ps', '--filter', f'name={container}', '--format', '{{.Names}}'],
             capture_output=True, text=True
@@ -88,9 +88,10 @@ def get_ip():
 def get_status():
     """Get system status."""
     try:
+        container = get_ros_container()
         # Check if Docker container is running
         result = subprocess.run(
-            ['docker', 'ps', '--filter', 'name=rosmower_robot', '--format', '{{.Status}}'],
+            ['docker', 'ps', '--filter', f'name={container}', '--format', '{{.Status}}'],
             capture_output=True,
             text=True,
             timeout=5
@@ -103,8 +104,8 @@ def get_status():
         if container_running:
             try:
                 ros_check = subprocess.run(
-                    ['docker', 'exec', 'rosmower_robot', 'bash', '-c', 
-                     'ros2 node list 2>/dev/null | grep -q rosbridge_websocket && echo "running" || echo "not running"'],
+                    ['docker', 'exec', container, 'bash', '-c', 
+                     'source /opt/ros/humble/setup.bash && ros2 node list 2>/dev/null | grep -q rosbridge_websocket && echo "running" || echo "not running"'],
                     capture_output=True,
                     text=True,
                     timeout=5
@@ -343,9 +344,10 @@ def stop_container(container_name):
 def get_ros_nodes():
     """Get list of running ROS nodes and topics."""
     try:
+        container = get_ros_container()
         # Check if Docker container is running
         container_check = subprocess.run(
-            ['docker', 'ps', '--filter', 'name=rosmower_robot', '--format', '{{.Status}}'],
+            ['docker', 'ps', '--filter', f'name={container}', '--format', '{{.Status}}'],
             capture_output=True,
             text=True,
             timeout=5
@@ -365,11 +367,11 @@ def get_ros_nodes():
         nodes = []
         try:
             node_result = subprocess.run(
-                ['docker', 'exec', 'rosmower_robot', 'bash', '-c', 
+                ['docker', 'exec', container, 'bash', '-c', 
                  'source /opt/ros/humble/setup.bash && ros2 node list'],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=10
             )
             if node_result.returncode == 0:
                 nodes = [n.strip() for n in node_result.stdout.strip().split('\n') if n.strip()]
@@ -380,11 +382,11 @@ def get_ros_nodes():
         topics = []
         try:
             topic_result = subprocess.run(
-                ['docker', 'exec', 'rosmower_robot', 'bash', '-c', 
+                ['docker', 'exec', container, 'bash', '-c', 
                  'source /opt/ros/humble/setup.bash && ros2 topic list'],
                 capture_output=True,
                 text=True,
-                timeout=5
+                timeout=10
             )
             if topic_result.returncode == 0:
                 topics = [t.strip() for t in topic_result.stdout.strip().split('\n') if t.strip()]
@@ -767,38 +769,68 @@ def get_zone_record_status():
                     # Covariance is in meters^2, so take sqrt for accuracy
                     gps_accuracy = math.sqrt(cov_value)
         
-        # Get zone recording state
-        state_result = subprocess.run(
+        # Get full zone recording status (waypoints, distance, area, state)
+        status_result = subprocess.run(
             ['docker', 'exec', container, 'bash', '-c',
-             'source /opt/ros/humble/setup.bash && timeout 1 ros2 topic echo /zone/record/state std_msgs/msg/String --once 2>/dev/null'],
+             'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && timeout 3 ros2 topic echo /zone/record/status --once 2>/dev/null'],
             capture_output=True,
             text=True,
-            timeout=2
+            timeout=5
         )
-        
+
+        waypoint_count = 0
+        distance_traveled = 0.0
+        estimated_area = 0.0
+        zone_name = ''
+        state = 0
         state_str = 'IDLE'
-        if state_result.returncode == 0 and state_result.stdout.strip():
-            data_match = re.search(r'data:\s*["\']?([^"\'\\n]+)["\']?', state_result.stdout)
-            if data_match:
-                state_str = data_match.group(1).strip()
-        
-        state = 0  # IDLE
-        if state_str == 'RECORDING':
-            state = 1
-        elif state_str == 'PAUSED':
-            state = 2
-        
+        status_message = ''
+
+        if status_result.returncode == 0 and status_result.stdout.strip():
+            out = status_result.stdout
+            m = re.search(r'state:\s*(\d+)', out)
+            if m:
+                state = int(m.group(1))
+                state_str = ['IDLE', 'RECORDING', 'PAUSED'].get(state, 'IDLE') if isinstance(['IDLE', 'RECORDING', 'PAUSED'], dict) else {0: 'IDLE', 1: 'RECORDING', 2: 'PAUSED'}.get(state, 'IDLE')
+            m = re.search(r'zone_name:\s*(.+)', out)
+            if m:
+                zone_name = m.group(1).strip()
+            m = re.search(r'waypoint_count:\s*(\d+)', out)
+            if m:
+                waypoint_count = int(m.group(1))
+            m = re.search(r'distance_traveled:\s*([\d.]+)', out)
+            if m:
+                distance_traveled = float(m.group(1))
+            m = re.search(r'estimated_area:\s*([\d.]+)', out)
+            if m:
+                estimated_area = float(m.group(1))
+            m = re.search(r'status_message:\s*(.+)', out)
+            if m:
+                status_message = m.group(1).strip()
+            # Override GPS accuracy from status topic if available
+            m = re.search(r'gps_accuracy:\s*([\d.]+)', out)
+            if m:
+                val = float(m.group(1))
+                if val > 0:
+                    gps_accuracy = val
+            m = re.search(r'gps_quality:\s*(\d+)', out)
+            if m:
+                gps_quality = int(m.group(1))
+
+        if not status_message:
+            status_message = f'GPS: {["No Fix", "2D Fix", "3D Fix", "RTK Float", "RTK Fixed"][min(gps_quality, 4)]}'
+
         return jsonify({
             'success': True,
             'state': state,
             'state_str': state_str,
-            'zone_name': '',
-            'waypoint_count': 0,
-            'distance_traveled': 0.0,
-            'estimated_area': 0.0,
+            'zone_name': zone_name,
+            'waypoint_count': waypoint_count,
+            'distance_traveled': distance_traveled,
+            'estimated_area': estimated_area,
             'gps_quality': gps_quality,
             'gps_accuracy': gps_accuracy,
-            'status_message': f'GPS: {["No Fix", "2D Fix", "3D Fix", "RTK Float", "RTK Fixed"][gps_quality]}'
+            'status_message': status_message
         })
             
     except Exception as e:
