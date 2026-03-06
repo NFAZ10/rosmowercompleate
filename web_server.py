@@ -786,7 +786,7 @@ def get_zone_record_status():
         state_str = 'IDLE'
         status_message = ''
 
-        if status_result.returncode == 0 and status_result.stdout.strip():
+        if status_result.stdout.strip():
             out = status_result.stdout
             m = re.search(r'state:\s*(\d+)', out)
             if m:
