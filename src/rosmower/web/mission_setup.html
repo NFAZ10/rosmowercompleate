@@ -320,6 +320,15 @@
             <span id="ros-status">Connecting to ROS bridge…</span>
         </div>
 
+        <!-- Live GPS strip -->
+        <div class="dock-live" id="gps-live" style="display:none; background:#eef7ee; border-left: 3px solid #4CAF50;">
+            <div>🛰️ Lat: <strong id="live-lat">—</strong></div>
+            <div>🛰️ Lon: <strong id="live-lon">—</strong></div>
+            <div>📶 Fix: <strong id="live-fix">—</strong></div>
+            <button class="btn btn-success" style="padding:6px 14px; font-size:0.82em; margin-left:auto;"
+                onclick="captureGPSasDock()">📍 Capture as Dock</button>
+        </div>
+
         <div class="dock-live" id="dock-live" style="display:none;">
             <div>📍 X: <strong id="live-x">—</strong> m</div>
             <div>📍 Y: <strong id="live-y">—</strong> m</div>
@@ -328,17 +337,17 @@
         </div>
 
         <p style="color:#777; font-size:0.88em; margin-bottom:16px;">
-            Set the dock's position in the <strong>map frame</strong> (metres from origin).
-            If the robot is already docked, use <em>Set Dock at Robot's Position</em> to capture it automatically.
+            <strong>Easiest:</strong> drive the robot to the dock, then click <em>📍 Capture as Dock</em> in the green GPS bar above — this saves GPS coordinates instantly.<br>
+            <strong>Or:</strong> if the robot is fully localized (Nav2 running), use <em>Set Dock at Robot's Pose</em> to save map-frame coordinates for precise navigation.
         </p>
 
         <div class="form-grid">
             <div class="form-group">
-                <label>X (m)</label>
+                <label>X (m) — map frame</label>
                 <input type="number" id="dock-x" step="0.01" placeholder="0.00">
             </div>
             <div class="form-group">
-                <label>Y (m)</label>
+                <label>Y (m) — map frame</label>
                 <input type="number" id="dock-y" step="0.01" placeholder="0.00">
             </div>
             <div class="form-group">
@@ -352,8 +361,8 @@
         </div>
 
         <div class="btn-row">
-            <button class="btn btn-primary" onclick="saveDock()">💾 Save Dock Position</button>
-            <button class="btn btn-success" onclick="dockCommand('SET_DOCK_HERE')">📍 Set Dock at Robot's Position</button>
+            <button class="btn btn-primary" onclick="saveDock()">💾 Save Map-Frame Position</button>
+            <button class="btn btn-success" onclick="dockCommand('SET_DOCK_HERE')">🤖 Set Dock at Robot's Pose</button>
             <button class="btn btn-danger"  onclick="dockCommand('CLEAR_DOCK')">🗑️ Clear Dock</button>
         </div>
     </div>
@@ -465,6 +474,22 @@
             document.getElementById('live-yaw').textContent = yaw;
             document.getElementById('dock-live').style.display = 'flex';
         });
+
+        // Subscribe to live GPS — show in the green capture bar
+        const gpsTopic = new ROSLIB.Topic({
+            ros, name: '/gps/fix', messageType: 'sensor_msgs/NavSatFix'
+        });
+        gpsTopic.subscribe(msg => {
+            const fixLabels = {'-1': 'No Fix', '0': '3D Fix', '1': 'SBAS', '2': 'RTK'};
+            const status = msg.status ? msg.status.status : -1;
+            const fixText = fixLabels[status] ?? `Fix ${status}`;
+            document.getElementById('live-lat').textContent = msg.latitude.toFixed(7);
+            document.getElementById('live-lon').textContent = msg.longitude.toFixed(7);
+            document.getElementById('live-fix').textContent = fixText;
+            document.getElementById('gps-live').style.display = 'flex';
+            // Store for capture
+            window._lastGPS = { lat: msg.latitude, lon: msg.longitude, alt: msg.altitude, fix: status };
+        });
     }
 
     // ── Dock ───────────────────────────────────────────────────
@@ -492,6 +517,34 @@
         const el = document.getElementById('dock-badge');
         el.textContent = text;
         el.className = 'dock-status-badge ' + (text === 'Known' ? 'badge-known' : 'badge-unknown');
+    }
+
+    async function captureGPSasDock() {
+        if (!window._lastGPS) {
+            toast('❌ No GPS fix received yet — is /gps/fix publishing?', 'err');
+            return;
+        }
+        if (window._lastGPS.fix < 0) {
+            toast('❌ GPS has no fix — wait for a valid GPS fix first', 'err');
+            return;
+        }
+        const res = await fetch(`${API}/api/dock/save`, {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({
+                lat: window._lastGPS.lat,
+                lon: window._lastGPS.lon,
+                alt: window._lastGPS.alt,
+                frame_id: document.getElementById('dock-frame').value || 'map'
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            toast(`✅ GPS captured as dock: ${window._lastGPS.lat.toFixed(6)}, ${window._lastGPS.lon.toFixed(6)}`, 'ok');
+            setBadge('Known (GPS)');
+        } else {
+            toast('❌ ' + (data.error || data.message), 'err');
+        }
     }
 
     async function saveDock() {

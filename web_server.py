@@ -537,22 +537,37 @@ def get_dock():
 
 @app.route('/api/dock/save', methods=['POST'])
 def save_dock():
-    """Write dock position to dock.yaml."""
+    """Write dock position to dock.yaml. Accepts map-frame x/y or GPS lat/lon (or both)."""
     import yaml, math
     try:
-        body = request.json
-        if body is None or 'x' not in body or 'y' not in body:
-            return jsonify({'success': False, 'message': 'x and y are required'}), 400
+        body = request.json or {}
+        has_xy  = 'x' in body and 'y' in body
+        has_gps = 'lat' in body and 'lon' in body
+        if not has_xy and not has_gps:
+            return jsonify({'success': False, 'message': 'Provide x+y (map frame) or lat+lon (GPS)'}), 400
+
         DOCK_FILE.parent.mkdir(parents=True, exist_ok=True)
-        data = {
-            'frame_id': body.get('frame_id', 'map'),
-            'x': round(float(body['x']), 4),
-            'y': round(float(body['y']), 4),
-            'yaw': round(float(body.get('yaw', 0.0)), 4),
-        }
+
+        # Preserve any existing fields
+        existing = {}
+        if DOCK_FILE.exists():
+            with open(DOCK_FILE, 'r') as f:
+                existing = yaml.safe_load(f) or {}
+
+        if has_xy:
+            existing['frame_id'] = body.get('frame_id', existing.get('frame_id', 'map'))
+            existing['x']   = round(float(body['x']), 4)
+            existing['y']   = round(float(body['y']), 4)
+            existing['yaw'] = round(float(body.get('yaw', existing.get('yaw', 0.0))), 4)
+        if has_gps:
+            existing['lat'] = round(float(body['lat']), 8)
+            existing['lon'] = round(float(body['lon']), 8)
+            if 'alt' in body:
+                existing['alt'] = round(float(body['alt']), 3)
+
         with open(DOCK_FILE, 'w') as f:
-            yaml.dump(data, f, default_flow_style=False)
-        return jsonify({'success': True, 'message': 'Dock position saved', 'dock': data})
+            yaml.dump(existing, f, default_flow_style=False)
+        return jsonify({'success': True, 'message': 'Dock position saved', 'dock': existing})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -562,7 +577,7 @@ def dock_command():
     try:
         body = request.json
         cmd = (body or {}).get('command', 'SET_DOCK_HERE').strip().upper()
-        allowed = {'SET_DOCK_HERE', 'RETURN_TO_DOCK', 'CLEAR_DOCK'}
+        allowed = {'SET_DOCK_HERE', 'SET_DOCK_GPS', 'RETURN_TO_DOCK', 'CLEAR_DOCK'}
         if cmd not in allowed:
             return jsonify({'success': False, 'message': f'Unknown command: {cmd}'}), 400
         container = get_ros_container()
