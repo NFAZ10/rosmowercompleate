@@ -25,10 +25,10 @@ def generate_launch_description():
         default_value='0.3',
         description='Douglas-Peucker simplification tolerance in meters'
     )
-    
+
     gps_accuracy_threshold_arg = DeclareLaunchArgument(
         'gps_accuracy_threshold',
-        default_value='2.0',
+        default_value='5.0',
         description='Minimum GPS accuracy to record waypoints (meters)'
     )
     

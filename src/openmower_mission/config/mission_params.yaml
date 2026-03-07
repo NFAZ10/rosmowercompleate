@@ -1,0 +1,31 @@
+/**:
+  ros__parameters:
+
+    # ── Coverage Path Generator ─────────────────────────────────────────────
+    stripe_width_m: 0.28          # mower deck width (meters)
+    overlap_m: 0.04               # stripe overlap to avoid missed strips
+    approach_angle_deg: 0.0       # stripe direction (0=east, 90=north)
+    waypoint_spacing_m: 0.25      # distance between waypoints along stripes
+    frame_id: "map"
+
+    # ── Mission Executor ────────────────────────────────────────────────────
+    waypoint_goal_tolerance_m: 0.3
+    stuck_velocity_threshold: 0.01    # m/s — below this = robot is stuck
+    stuck_timeout_sec: 15.0           # seconds before declaring stuck
+    max_recovery_attempts: 3
+    battery_return_threshold_pct: 25.0
+    path_generation_timeout_sec: 10.0
+    loop_hz: 2.0
+
+    # ── Dock Manager ────────────────────────────────────────────────────────
+    dock_file: "/ws/zones/dock.yaml"
+    dock_staging_dist_m: 1.5          # staging pose distance from dock (m)
+    auto_save_dock: true
+
+    # ── Zone Costmap Publisher ───────────────────────────────────────────────
+    resolution: 0.1                   # costmap cell size (m)
+    map_width_m: 100.0
+    map_height_m: 100.0
+    map_origin_x: -50.0
+    map_origin_y: -50.0
+    publish_rate_hz: 0.5

@@ -1,0 +1,9 @@
+# Generate a boustrophedon coverage path for a given zone
+string zone_id          # ID of the zone to generate coverage path for
+float32 stripe_width_m  # override default stripe width (0 = use node default)
+float32 approach_angle_deg  # override stripe angle (999 = use node default)
+---
+bool success
+string message
+nav_msgs/Path path      # generated coverage path (empty if failed)
+int32 waypoint_count

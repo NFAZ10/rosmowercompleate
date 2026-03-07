@@ -4,10 +4,15 @@ Panels:
     Name: Displays
     Property Tree Widget:
       Expanded:
-        - /RobotModel1
-        - /Map1
+        - /Global Options1
+        - /Status1
+        - /RobotModel1/Mass Properties1
+        - /RobotModel1/Links1
+        - /RobotModel1/Links1/left_wheel1
+        - /RobotModel1/Links1/right_wheel1
+        - /Odometry1
       Splitter Ratio: 0.5
-    Tree Height: 796
+    Tree Height: 681
   - Class: rviz_common/Tool Properties
     Expanded:
       - /Interact1
@@ -60,9 +65,9 @@ Visualization Manager:
       Enabled: true
       Invert Rainbow: false
       Max Color: 255; 255; 255
-      Max Intensity: 52
+      Max Intensity: 53
       Min Color: 0; 0; 0
-      Min Intensity: 0
+      Min Intensity: 1
       Name: LaserScan
       Position Transformer: XYZ
       Selectable: true
@@ -81,7 +86,7 @@ Visualization Manager:
       Value: true
     - Alpha: 1
       Class: rviz_default_plugins/RobotModel
-      Collision Enabled: false
+      Collision Enabled: true
       Description File: ""
       Description Source: Topic
       Description Topic:
@@ -137,8 +142,8 @@ Visualization Manager:
           Value: true
         left_wheel:
           Alpha: 1
-          Show Axes: false
-          Show Trail: false
+          Show Axes: true
+          Show Trail: true
           Value: true
         lidar_link:
           Alpha: 1
@@ -171,8 +176,8 @@ Visualization Manager:
           Value: true
         right_wheel:
           Alpha: 1
-          Show Axes: false
-          Show Trail: false
+          Show Axes: true
+          Show Trail: true
           Value: true
       Mass Properties:
         Inertia: false
@@ -182,6 +187,27 @@ Visualization Manager:
       Update Interval: 0
       Value: true
       Visual Enabled: true
+    - Alpha: 0.699999988079071
+      Class: rviz_default_plugins/Map
+      Color Scheme: map
+      Draw Behind: false
+      Enabled: true
+      Name: Map
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        Filter size: 10
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map
+      Update Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: /map_updates
+      Use Timestamp: false
+      Value: true
     - Angle Tolerance: 0.10000000149011612
       Class: rviz_default_plugins/Odometry
       Covariance:
@@ -221,26 +247,56 @@ Visualization Manager:
         Reliability Policy: Reliable
         Value: /odom
       Value: true
-    - Alpha: 0.699999988079071
-      Class: rviz_default_plugins/Map
-      Color Scheme: map
-      Draw Behind: false
+    - Class: rviz_default_plugins/MarkerArray
       Enabled: true
-      Name: Map
+      Name: MarkerArray
+      Namespaces:
+        {}
+      Topic:
+        Depth: 5
+        Durability Policy: Volatile
+        History Policy: Keep Last
+        Reliability Policy: Reliable
+        Value: visualization_marker_array
+      Value: true
+    - Angle Tolerance: 0.10000000149011612
+      Class: rviz_default_plugins/Odometry
+      Covariance:
+        Orientation:
+          Alpha: 0.5
+          Color: 255; 255; 127
+          Color Style: Unique
+          Frame: Local
+          Offset: 1
+          Scale: 1
+          Value: true
+        Position:
+          Alpha: 0.30000001192092896
+          Color: 204; 51; 204
+          Scale: 1
+          Value: true
+        Value: true
+      Enabled: true
+      Keep: 100
+      Name: Odometry
+      Position Tolerance: 0.10000000149011612
+      Shape:
+        Alpha: 1
+        Axes Length: 1
+        Axes Radius: 0.10000000149011612
+        Color: 255; 25; 0
+        Head Length: 0.30000001192092896
+        Head Radius: 0.10000000149011612
+        Shaft Length: 1
+        Shaft Radius: 0.05000000074505806
+        Value: Arrow
       Topic:
         Depth: 5
         Durability Policy: Volatile
         Filter size: 10
         History Policy: Keep Last
         Reliability Policy: Reliable
-        Value: /map
-      Update Topic:
-        Depth: 5
-        Durability Policy: Volatile
-        History Policy: Keep Last
-        Reliability Policy: Reliable
-        Value: /map_updates
-      Use Timestamp: false
+        Value: /odom
       Value: true
   Enabled: true
   Global Options:
@@ -287,26 +343,23 @@ Visualization Manager:
   Value: true
   Views:
     Current:
-      Class: rviz_default_plugins/Orbit
-      Distance: 1.0102218389511108
+      Class: rviz_default_plugins/FPS
       Enable Stereo Rendering:
         Stereo Eye Separation: 0.05999999865889549
         Stereo Focal Distance: 1
         Swap Stereo Eyes: false
         Value: false
-      Focal Point:
-        X: 4.415855407714844
-        Y: 4.527624130249023
-        Z: 6.39565372467041
-      Focal Shape Fixed Size: false
-      Focal Shape Size: 0.05000000074505806
       Invert Z Axis: false
       Name: Current View
       Near Clip Distance: 0.009999999776482582
-      Pitch: 0.7322975993156433
+      Pitch: 0.7603173851966858
+      Position:
+        X: 1.6981470584869385
+        Y: 1.574878454208374
+        Z: 2.2091312408447266
       Target Frame: <Fixed Frame>
-      Value: Orbit (rviz_default_plugins)
-      Yaw: 0.6800007224082947
+      Value: FPS (rviz_default_plugins)
+      Yaw: 3.891991376876831
     Saved: ~
 Window Geometry:
   Displays:
@@ -314,7 +367,7 @@ Window Geometry:
   Height: 1011
   Hide Left Dock: false
   Hide Right Dock: false
-  QMainWindow State: 000000ff00000000fd0000000200000000000001d20000039dfc0200000004fb000000100044006900730070006c006100790073010000003b0000039d000000c700fffffffb0000001e0054006f006f006c002000500072006f007000650072007400690065007300000001080000005c0000005c00fffffffb0000000a0049006d00610067006501000002b4000000c50000000000000000fb000000220053006c0061006d0054006f006f006c0062006f00780050006c007500670069006e0000000188000002550000016d00ffffff000000010000019b0000039dfc0200000001fb0000000a00560069006500770073010000003b0000039d000000a000ffffff000004070000039d00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
+  QMainWindow State: 000000ff00000000fd0000000200000000000001d20000039dfc0200000004fb000000100044006900730070006c006100790073010000003b0000032a000000c700fffffffb0000001e0054006f006f006c002000500072006f0070006500720074006900650073010000036b0000006d0000005c00fffffffb0000000a0049006d00610067006501000002b4000000c50000000000000000fb000000220053006c0061006d0054006f006f006c0062006f00780050006c007500670069006e0000000188000002550000016d00ffffff000000010000019b0000039dfc0200000001fb0000000a00560069006500770073010000003b0000039d000000a000ffffff000004070000039d00000004000000040000000800000008fc0000000100000002000000010000000a0054006f006f006c00730100000000ffffffff0000000000000000
   SlamToolboxPlugin:
     collapsed: false
   Tool Properties:

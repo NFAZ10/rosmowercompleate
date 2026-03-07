@@ -422,8 +422,11 @@ def get_zones():
     zones = []
     
     try:
+        EXCLUDED_ZONE_FILES = {'dock.yaml', 'mission_params.yaml'}
         if zones_dir.exists():
-            for file_path in zones_dir.glob('*.yaml'):
+            for file_path in sorted(zones_dir.glob('*.yaml')):
+                if file_path.name in EXCLUDED_ZONE_FILES:
+                    continue
                 try:
                     with open(file_path, 'r') as f:
                         zone_data = yaml.safe_load(f)
@@ -701,40 +704,116 @@ def get_battery_status():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 # Zone Recording API Endpoints
+def _ros_srv_ok(stdout: str) -> bool:
+    """
+    ROS2 Humble service call output can be YAML ('success: true') or Python repr
+    ('success=True'). Accept both.
+    """
+    lower = stdout.lower()
+    return 'success=true' in lower or 'success: true' in lower
+
+
+def _ensure_zone_recorder_running(container: str) -> tuple[bool, str]:
+    """
+    Check if zone_recorder node is running; auto-start it if not.
+    Returns (success, message).
+    """
+    check = subprocess.run(
+        ['docker', 'exec', container, 'bash', '-c',
+         'source /opt/ros/humble/setup.bash && '
+         'ros2 service list 2>/dev/null | grep -q /zone/record/start && echo READY'],
+        capture_output=True, text=True, timeout=8
+    )
+    if 'READY' in check.stdout:
+        return True, 'already running'
+
+    # Node not running — launch it in the background inside the container
+    subprocess.Popen(
+        ['docker', 'exec', container, 'bash', '-c',
+         'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && '
+         'ros2 run rosmower zone_recorder.py '
+         '--ros-args --log-level warn '
+         '-p gps_accuracy_threshold:=5.0 '
+         '-p waypoint_min_distance:=0.5 '
+         '-p simplification_tolerance:=0.3 '
+         '-p publish_rate:=2.0 '
+         '-p gps_topic:=/gps/fix'],
+        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+    )
+
+    # Wait up to 6 seconds for the service to become available
+    for _ in range(12):
+        time.sleep(0.5)
+        probe = subprocess.run(
+            ['docker', 'exec', container, 'bash', '-c',
+             'source /opt/ros/humble/setup.bash && '
+             'ros2 service list 2>/dev/null | grep -q /zone/record/start && echo READY'],
+            capture_output=True, text=True, timeout=5
+        )
+        if 'READY' in probe.stdout:
+            return True, 'started'
+
+    return False, 'zone_recorder node failed to start — check that rosmower package is built in the container'
+
+
 @app.route('/api/zone/record/start', methods=['POST'])
 def start_zone_recording():
-    """Start recording a zone boundary via GPS."""
+    """Start recording a zone boundary via GPS. Auto-starts zone_recorder node if needed."""
     from flask import request
     try:
         data = request.json or {}
         zone_name = data.get('zone_name', 'New Zone')
         priority = data.get('priority', 5)
         use_visual_odom = data.get('use_visual_odometry', False)
-        
-        # Call ROS service with workspace sourced
+
         container = get_ros_container()
-        service_call = f"source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && timeout 8 ros2 service call /zone/record/start rosmower_msgs/srv/StartZoneRecording '{{zone_name: \"{zone_name}\", priority: {priority}, use_visual_odometry: {str(use_visual_odom).lower()}}}'"
-        
+
+        # Ensure the zone_recorder node is running before calling its service
+        node_ok, node_msg = _ensure_zone_recorder_running(container)
+        if not node_ok:
+            return jsonify({
+                'success': False,
+                'message': f'Zone recorder node not available: {node_msg}',
+                'hint': 'Run: docker exec <container> ros2 run rosmower zone_recorder.py'
+            }), 503
+
+        service_call = (
+            f"source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && "
+            f"timeout 8 ros2 service call /zone/record/start "
+            f"rosmower_msgs/srv/StartZoneRecording "
+            f"'{{zone_name: \"{zone_name}\", priority: {priority}, "
+            f"use_visual_odometry: {str(use_visual_odom).lower()}}}'"
+        )
+
         result = subprocess.run(
             ['docker', 'exec', container, 'bash', '-c', service_call],
-            capture_output=True,
-            text=True,
-            timeout=10
+            capture_output=True, text=True, timeout=12
         )
-        
-        if result.returncode == 0 and 'success: true' in result.stdout.lower():
+
+        if result.returncode == 0 and _ros_srv_ok(result.stdout):
             return jsonify({
                 'success': True,
                 'message': f'Started recording zone: {zone_name}',
-                'zone_name': zone_name
+                'zone_name': zone_name,
+                'node_status': node_msg
             })
         else:
+            # Extract the actual message from the service response
+            import re
+            msg_match = re.search(r"message='?([^',\)]+)'?", result.stdout)
+            svc_msg = msg_match.group(1).strip() if msg_match else None
             return jsonify({
                 'success': False,
-                'message': 'Failed to start recording',
-                'error': result.stderr
-            }), 500
-            
+                'message': svc_msg or 'Failed to start recording',
+                'raw': (result.stderr or result.stdout or '').strip()[:200]
+            }), 409 if svc_msg and 'already' in svc_msg.lower() else 500
+
+    except subprocess.TimeoutExpired:
+        return jsonify({
+            'success': False,
+            'message': 'Timed out waiting for zone recorder — GPS may be unavailable',
+            'hint': 'Check GPS fix with: GET /api/zone/record/status'
+        }), 504
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
@@ -742,131 +821,92 @@ def start_zone_recording():
 def stop_zone_recording():
     """Stop recording and save zone."""
     from flask import request
+    import re
     try:
         data = request.json or {}
         save_zone = data.get('save_zone', True)
         auto_close = data.get('auto_close', True)
         simplify = data.get('simplify', True)
         tolerance = data.get('simplification_tolerance', 0.3)
-        
-        # Call ROS service with workspace sourced
+
         container = get_ros_container()
         result = subprocess.run(
             ['docker', 'exec', container, 'bash', '-c',
-             f'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && timeout 8 ros2 service call /zone/record/stop rosmower_msgs/srv/StopZoneRecording \'{{save_zone: {str(save_zone).lower()}, auto_close: {str(auto_close).lower()}, simplify: {str(simplify).lower()}, simplification_tolerance: {tolerance}}}\''],
-            capture_output=True,
-            text=True,
-            timeout=10
+             f'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && '
+             f'timeout 8 ros2 service call /zone/record/stop '
+             f'rosmower_msgs/srv/StopZoneRecording '
+             f"'{{save_zone: {str(save_zone).lower()}, auto_close: {str(auto_close).lower()}, "
+             f"simplify: {str(simplify).lower()}, simplification_tolerance: {tolerance}}}'"],
+            capture_output=True, text=True, timeout=12
         )
-        
+
         if result.returncode == 0:
-            # Parse output for success/failure
-            import re
-            success_match = re.search(r'success:\s*(true|false)', result.stdout, re.IGNORECASE)
-            message_match = re.search(r'message:\s*["\']?([^"\'\\n]+)["\']?', result.stdout)
-            
-            success = success_match and success_match.group(1).lower() == 'true' if success_match else False
-            message = message_match.group(1) if message_match else 'Recording stopped'
-            
-            return jsonify({
-                'success': success,
-                'message': message,
-                'raw_output': result.stdout[:500]  # First 500 chars for debugging
-            })
+            # Handle both YAML ('success: true') and Python repr ('success=True') output
+            success = _ros_srv_ok(result.stdout)
+            message_match = re.search(r'message[=:]\s*["\']?([^"\'=\n,)]+)', result.stdout, re.IGNORECASE)
+            message = message_match.group(1).strip() if message_match else 'Recording stopped'
+            return jsonify({'success': success, 'message': message,
+                            'raw_output': result.stdout[:500]})
         else:
-            return jsonify({
-                'success': False,
-                'message': 'Failed to stop recording',
-                'error': result.stderr
-            }), 500
-            
+            err = (result.stderr or result.stdout or '').strip()[:300]
+            return jsonify({'success': False,
+                            'message': 'Zone recorder not running — start recording first',
+                            'error': err}), 503
+
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False,
+                        'message': 'Service timed out — zone recorder may have crashed'}), 504
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+def _zone_control_call(command_int: int, command_name: str):
+    """Shared helper for pause/resume/cancel service calls."""
+    container = get_ros_container()
+    result = subprocess.run(
+        ['docker', 'exec', container, 'bash', '-c',
+         f'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && '
+         f'timeout 6 ros2 service call /zone/record/control '
+         f'rosmower_msgs/srv/ControlZoneRecording "{{command: {command_int}}}"'],
+        capture_output=True, text=True, timeout=8
+    )
+    if result.returncode == 0 and _ros_srv_ok(result.stdout):
+        return jsonify({'success': True, 'message': f'Recording {command_name}'})
+    err = (result.stderr or result.stdout or '').strip()[:200]
+    return jsonify({'success': False,
+                    'message': f'Failed to {command_name} — zone recorder may not be recording',
+                    'error': err}), 503
+
 
 @app.route('/api/zone/record/pause', methods=['POST'])
 def pause_zone_recording():
     """Pause zone recording."""
     try:
-        # Call ROS service
-        container = get_ros_container()
-        result = subprocess.run(
-            ['docker', 'exec', container, 'bash', '-c',
-             'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && timeout 6 ros2 service call /zone/record/control rosmower_msgs/srv/ControlZoneRecording "{command: 0}"'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        
-        if result.returncode == 0 and 'success: true' in result.stdout.lower():
-            return jsonify({
-                'success': True,
-                'message': 'Recording paused'
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Failed to pause recording',
-                'error': result.stderr
-            }), 500
-            
+        return _zone_control_call(0, 'paused')
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Service timed out'}), 504
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
+
 
 @app.route('/api/zone/record/resume', methods=['POST'])
 def resume_zone_recording():
     """Resume zone recording."""
     try:
-        # Call ROS service
-        container = get_ros_container()
-        result = subprocess.run(
-            ['docker', 'exec', container, 'bash', '-c',
-             'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && timeout 6 ros2 service call /zone/record/control rosmower_msgs/srv/ControlZoneRecording "{command: 1}"'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        
-        if result.returncode == 0 and 'success: true' in result.stdout.lower():
-            return jsonify({
-                'success': True,
-                'message': 'Recording resumed'
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Failed to resume recording',
-                'error': result.stderr
-            }), 500
-            
+        return _zone_control_call(1, 'resumed')
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Service timed out'}), 504
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 
+
 @app.route('/api/zone/record/cancel', methods=['POST'])
 def cancel_zone_recording():
-    """Cancel zone recording."""
+    """Cancel zone recording without saving."""
     try:
-        # Call ROS service
-        container = get_ros_container()
-        result = subprocess.run(
-            ['docker', 'exec', container, 'bash', '-c',
-             'source /opt/ros/humble/setup.bash && source /ws/install/setup.bash && timeout 6 ros2 service call /zone/record/control rosmower_msgs/srv/ControlZoneRecording "{command: 2}"'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-        
-        if result.returncode == 0 and 'success: true' in result.stdout.lower():
-            return jsonify({
-                'success': True,
-                'message': 'Recording cancelled'
-            })
-        else:
-            return jsonify({
-                'success': False,
-                'message': 'Failed to cancel recording',
-                'error': result.stderr
-            }), 500
-            
+        return _zone_control_call(2, 'cancelled')
+    except subprocess.TimeoutExpired:
+        return jsonify({'success': False, 'message': 'Service timed out'}), 504
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)}), 500
 

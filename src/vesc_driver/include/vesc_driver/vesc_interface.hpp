@@ -81,6 +81,14 @@ public:
   bool setDuty(float duty_cycle);
 
   /**
+   * @brief Set duty cycle for remote VESC over CAN
+   * @param can_id CAN ID of target VESC
+   * @param duty_cycle Duty cycle (-1.0 to 1.0)
+   * @return true if command sent successfully
+   */
+  bool setDutyCAN(uint8_t can_id, float duty_cycle);
+
+  /**
    * @brief Set current
    * @param current_amps Current in amps
    * @return true if command sent successfully

@@ -11,6 +11,7 @@ find_package(std_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(builtin_interfaces REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(rosidl_default_generators REQUIRED)
 
 # Generate messages and services
@@ -41,7 +42,8 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "srv/GetZoneGraph.srv"
   "srv/ListRoutes.srv"
   "srv/DeleteRoute.srv"
-  DEPENDENCIES std_msgs geometry_msgs sensor_msgs builtin_interfaces
+  "srv/GenerateCoveragePath.srv"
+  DEPENDENCIES std_msgs geometry_msgs sensor_msgs builtin_interfaces nav_msgs
 )
 
 if(BUILD_TESTING)

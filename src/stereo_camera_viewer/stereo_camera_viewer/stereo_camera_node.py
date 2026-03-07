@@ -53,6 +53,12 @@ class StereoCameraNode(Node):
         self.publish_raw = self.get_parameter('publish_raw').value
         self.denoise = self.get_parameter('denoise').value
         
+        # Auto-detect Argus ISP V4L2 mode: when libv4l2_nvargus is LD_PRELOADed,
+        # cv2.VideoCapture(CAP_V4L2) routes through the Jetson ISP (auto-exposure,
+        # AWB, NR, CCM) without needing nvarguscamerasrc or a display/EGL session.
+        import os
+        self._use_v4l2_argus = 'libv4l2_nvargus' in os.environ.get('LD_PRELOAD', '')
+        
         # Create CV Bridge
         self.bridge = CvBridge()
         
@@ -87,7 +93,7 @@ class StereoCameraNode(Node):
         self.get_logger().info(f'Stereo Camera Node started')
         self.get_logger().info(f'Left camera ID: {self.left_camera_id}, Right camera ID: {self.right_camera_id}')
         self.get_logger().info(f'Resolution: {self.width}x{self.height} @ {self.fps} FPS')
-        self.get_logger().info(f'Backend: {"GStreamer (HW accel)" if self.use_gstreamer else "V4L2"}')
+        self.get_logger().info(f'Backend: {"GStreamer/ISP" if self.use_gstreamer else ("V4L2+ArgusISP" if self._use_v4l2_argus else "V4L2 raw")}')
         self.get_logger().info(f'Publishing: {"Raw + Compressed" if self.publish_raw else "Compressed only"}')
         self.get_logger().info(f'JPEG quality: {self.jpeg_quality}%')
     
@@ -247,20 +253,35 @@ class StereoCameraNode(Node):
             else:
                 # V4L2 raw mode: IMX219 only outputs RG10 (uint16 Bayer).
                 # OpenCV cannot decode RG10 correctly, so use v4l2-ctl subprocess.
-                self.get_logger().info('Opening cameras with V4L2 raw reader (RG10 uint16 Bayer)...')
-                self.left_v4l2_proc = self._start_v4l2_raw(self.left_camera_id)
-                self.right_v4l2_proc = self._start_v4l2_raw(self.right_camera_id)
+                # Exception: if libv4l2_nvargus is LD_PRELOADed, OpenCV V4L2 routes
+                # through the Jetson Argus ISP and returns proper BGR frames directly.
+                if self._use_v4l2_argus:
+                    self.get_logger().info('Opening cameras with V4L2+ArgusISP (libv4l2_nvargus)...')
+                    self.left_cap = cv2.VideoCapture(self.left_camera_id, cv2.CAP_V4L2)
+                    self.right_cap = cv2.VideoCapture(self.right_camera_id, cv2.CAP_V4L2)
+                    for cap, name in [(self.left_cap, 'left'), (self.right_cap, 'right')]:
+                        if cap and cap.isOpened():
+                            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+                            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+                            cap.set(cv2.CAP_PROP_FPS, self.fps)
+                            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+                            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+                            self.get_logger().info(f'{name} camera opened via ArgusISP: {w}x{h}')
+                else:
+                    self.get_logger().info('Opening cameras with V4L2 raw reader (RG10 uint16 Bayer)...')
+                    self.left_v4l2_proc = self._start_v4l2_raw(self.left_camera_id)
+                    self.right_v4l2_proc = self._start_v4l2_raw(self.right_camera_id)
                 
                 left_ok = self.left_v4l2_proc is not None
                 right_ok = self.right_v4l2_proc is not None
             
             # Report final status
-            if not self.use_gstreamer:
-                left_ok = self.left_v4l2_proc is not None
-                right_ok = self.right_v4l2_proc is not None
-            else:
+            if self.use_gstreamer or self._use_v4l2_argus:
                 left_ok = self.left_cap and self.left_cap.isOpened()
                 right_ok = self.right_cap and self.right_cap.isOpened()
+            else:
+                left_ok = self.left_v4l2_proc is not None
+                right_ok = self.right_v4l2_proc is not None
             
             if left_ok and right_ok:
                 self.get_logger().info('✓ Both cameras opened successfully!')
@@ -345,7 +366,7 @@ class StereoCameraNode(Node):
     
     def capture_and_publish(self):
         """Capture frames from both cameras and publish"""
-        if self.use_gstreamer:
+        if self.use_gstreamer or self._use_v4l2_argus:
             left_ok = self.left_cap and self.left_cap.isOpened()
             right_ok = self.right_cap and self.right_cap.isOpened()
         else:
@@ -365,20 +386,25 @@ class StereoCameraNode(Node):
             # Capture left frame
             frame_left = None
             if left_ok:
-                if self.use_gstreamer:
+                if self.use_gstreamer or self._use_v4l2_argus:
                     ret, frame_left = self.left_cap.read()
                     if not ret:
                         frame_left = None
+                    elif frame_left is not None and (frame_left.shape[1] != self.width or frame_left.shape[0] != self.height):
+                        # ISP may return a different resolution — resize to target
+                        frame_left = cv2.resize(frame_left, (self.width, self.height))
                 else:
                     frame_left = self._read_v4l2_raw_frame(self.left_v4l2_proc)
             
             # Capture right frame
             frame_right = None
             if right_ok:
-                if self.use_gstreamer:
+                if self.use_gstreamer or self._use_v4l2_argus:
                     ret, frame_right = self.right_cap.read()
                     if not ret:
                         frame_right = None
+                    elif frame_right is not None and (frame_right.shape[1] != self.width or frame_right.shape[0] != self.height):
+                        frame_right = cv2.resize(frame_right, (self.width, self.height))
                 else:
                     frame_right = self._read_v4l2_raw_frame(self.right_v4l2_proc)
             

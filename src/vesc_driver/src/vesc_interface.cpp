@@ -107,6 +107,18 @@ bool VescInterface::setDuty(float duty_cycle) {
   return writeSerial(packet);
 }
 
+bool VescInterface::setDutyCAN(uint8_t can_id, float duty_cycle) {
+  std::vector<uint8_t> payload;
+  payload.push_back(static_cast<uint8_t>(VescPacket::CommandId::COMM_SET_DUTY));
+  int32_t duty_int = static_cast<int32_t>(duty_cycle * 100000.0f);
+  payload.push_back(static_cast<uint8_t>((duty_int >> 24) & 0xFF));
+  payload.push_back(static_cast<uint8_t>((duty_int >> 16) & 0xFF));
+  payload.push_back(static_cast<uint8_t>((duty_int >>  8) & 0xFF));
+  payload.push_back(static_cast<uint8_t>( duty_int        & 0xFF));
+  auto packet = packet_handler_.createCANForward(can_id, payload);
+  return writeSerial(packet);
+}
+
 bool VescInterface::setCurrent(float current_amps) {
   auto packet = packet_handler_.createSetCurrent(current_amps);
   return writeSerial(packet);
