@@ -17,8 +17,9 @@ gps_node:
     use_rtk: false
     
     # NTRIP configuration for RTK corrections
-    ntrip_server: '63.133.235.92'
+   # ntrip_server: '63.133.235.92'
     ntrip_port: 2101
     ntrip_mountpoint: 'BASE'
     ntrip_username: 'nfazio'
     ntrip_password: '123456789'
+    ntrip_server: '10.0.212.119'

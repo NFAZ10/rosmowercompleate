@@ -1,12 +1,16 @@
 mqtt_bridge:
   ros__parameters:
     # MQTT Broker Configuration
-    mqtt_broker: "localhost"  # Change to your MQTT broker address
+    mqtt_broker: "homeassistant.local"  # Override via launch arg or ROSMOWER_MQTT_BROKER
     mqtt_port: 1883
-    mqtt_username: ""  # Optional
-    mqtt_password: ""  # Optional
+    mqtt_username: ""  # Set via launch arg or ROSMOWER_MQTT_USERNAME
+    mqtt_password: ""  # Set via launch arg or ROSMOWER_MQTT_PASSWORD
     mqtt_client_id: "rosmower_mqtt_bridge"
     mqtt_keepalive: 60
+    mqtt_qos: 1
     
     # Base MQTT topic prefix
     base_topic: "rosmower"
+    retain_telemetry: true
+    status_interval_sec: 5.0
+    snapshot_interval_sec: 2.0

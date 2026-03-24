@@ -1,0 +1,603 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Open Mower Companion - ROS Mower</title>
+    <script src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .page-header {
+            max-width: 980px;
+            margin: 0 auto 20px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            color: #fff;
+        }
+
+        .page-header h1 {
+            font-size: 1.9em;
+            text-shadow: 1px 1px 4px rgba(0,0,0,0.35);
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .nav-link {
+            color: #fff;
+            text-decoration: none;
+            background: rgba(255,255,255,0.16);
+            padding: 8px 14px;
+            border-radius: 8px;
+            border: 1px solid rgba(255,255,255,0.18);
+        }
+
+        .card {
+            max-width: 980px;
+            margin: 0 auto 22px;
+            background: #fff;
+            border-radius: 16px;
+            padding: 28px;
+            box-shadow: 0 10px 34px rgba(0,0,0,0.22);
+        }
+
+        .card h2 {
+            color: #1e3c72;
+            font-size: 1.35em;
+            margin-bottom: 16px;
+            border-bottom: 2px solid #edf1f7;
+            padding-bottom: 10px;
+        }
+
+        .summary {
+            background: #f4f8ff;
+            border-left: 4px solid #2a5298;
+            border-radius: 10px;
+            padding: 14px 16px;
+            color: #28415f;
+            line-height: 1.5;
+            margin-bottom: 18px;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 14px;
+            margin-bottom: 18px;
+        }
+
+        .status-item {
+            background: #f7f9fc;
+            border-radius: 12px;
+            padding: 14px;
+        }
+
+        .status-item .label {
+            font-size: 0.76em;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            color: #6a7480;
+            margin-bottom: 6px;
+        }
+
+        .status-item .value {
+            color: #223248;
+            font-size: 1.02em;
+            font-weight: 600;
+            word-break: break-word;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 7px 12px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 0.9em;
+        }
+
+        .badge-online {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .badge-offline {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .btn-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-top: 14px;
+        }
+
+        .btn {
+            padding: 11px 18px;
+            border: none;
+            border-radius: 10px;
+            font-size: 0.92em;
+            font-weight: 700;
+            cursor: pointer;
+            color: #fff;
+            transition: transform 0.15s, opacity 0.2s;
+        }
+
+        .btn:hover { transform: translateY(-1px); opacity: 0.92; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+        .btn-primary { background: linear-gradient(135deg, #1e3c72, #2a5298); }
+        .btn-success { background: linear-gradient(135deg, #11998e, #38ef7d); }
+        .btn-warning { background: linear-gradient(135deg, #ff9800, #f57c00); }
+        .btn-danger  { background: linear-gradient(135deg, #eb3349, #f45c43); }
+        .btn-muted   { background: #6b7280; }
+
+        .warning-list, .note-list {
+            margin: 12px 0 0 18px;
+            color: #4c5662;
+            line-height: 1.5;
+        }
+
+        .warning-box {
+            background: #fff8e1;
+            border-left: 4px solid #ffb300;
+            border-radius: 10px;
+            padding: 14px 16px;
+            margin-top: 16px;
+        }
+
+        .logs {
+            margin-top: 16px;
+            background: #111827;
+            color: #e5e7eb;
+            padding: 14px;
+            border-radius: 10px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.82em;
+            min-height: 150px;
+            max-height: 280px;
+            overflow: auto;
+            white-space: pre-wrap;
+        }
+
+        .ros-connect {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 14px;
+            font-size: 0.85em;
+        }
+
+        .ros-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background: #ccc;
+            flex-shrink: 0;
+        }
+
+        .ros-dot.ok  { background: #4CAF50; box-shadow: 0 0 6px #4CAF50; animation: blink 2s infinite; }
+        .ros-dot.err { background: #f44336; }
+
+        @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.4} }
+
+        .dock-live {
+            background: #f7f9fc;
+            border-radius: 10px;
+            padding: 14px;
+            margin-bottom: 18px;
+            font-size: 0.88em;
+            color: #555;
+            display: flex;
+            gap: 24px;
+            flex-wrap: wrap;
+        }
+
+        .dock-live.gps {
+            background: #eef7ee;
+            border-left: 3px solid #4CAF50;
+        }
+
+        .dock-live span strong { color: #1e3c72; }
+
+        .form-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 16px;
+            margin-bottom: 18px;
+        }
+
+        .form-group label {
+            display: block;
+            font-size: 0.8em;
+            font-weight: 600;
+            color: #555;
+            margin-bottom: 5px;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+
+        .form-group input {
+            width: 100%;
+            padding: 10px 12px;
+            border: 1.5px solid #ddd;
+            border-radius: 8px;
+            font-size: 1em;
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            padding: 14px 20px;
+            border-radius: 10px;
+            color: #fff;
+            font-weight: 700;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.25s;
+            z-index: 999;
+        }
+
+        .toast.show { opacity: 1; }
+        .toast.ok  { background: #2e7d32; }
+        .toast.err { background: #c62828; }
+    </style>
+</head>
+<body>
+    <div class="page-header">
+        <h1>🧭 Open Mower Companion</h1>
+        <div class="nav-links">
+            <a href="/" class="nav-link">← Back to Control</a>
+            <a href="/camera" class="nav-link">🎮 Manual Control</a>
+            <a href="/status" class="nav-link">📊 Status</a>
+        </div>
+    </div>
+
+    <div class="card">
+        <h2>Planner Runtime</h2>
+        <div class="summary">
+            <strong>Rosmower</strong> keeps ownership of motors, lidar, cameras, and the ROS bridge.<br>
+            <strong>Open Mower</strong> runs beside it as the companion planner and publishes navigation commands on <code>/cmd_vel</code>.
+        </div>
+
+        <div id="planner-badge" class="badge badge-offline">Offline</div>
+
+        <div class="status-grid">
+            <div class="status-item">
+                <div class="label">Container</div>
+                <div class="value" id="planner-container">—</div>
+            </div>
+            <div class="status-item">
+                <div class="label">Compose Status</div>
+                <div class="value" id="planner-status">Not running</div>
+            </div>
+            <div class="status-item">
+                <div class="label">Control Topic</div>
+                <div class="value" id="planner-topic">/cmd_vel</div>
+            </div>
+            <div class="status-item">
+                <div class="label">OpenMower Web UI</div>
+                <div class="value" id="planner-foxglove">http://robot:9091</div>
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-success" onclick="plannerAction('start')">▶️ Start Open Mower</button>
+            <button class="btn btn-warning" onclick="plannerAction('restart')">🔄 Restart Open Mower</button>
+            <button class="btn btn-danger" onclick="plannerAction('stop')">⏹️ Stop Open Mower</button>
+            <button class="btn btn-primary" onclick="openMowerUI()">🔗 Open Web UI</button>
+            <button class="btn btn-muted" onclick="loadPlannerStatus()">🔄 Refresh</button>
+        </div>
+
+        <div class="warning-box">
+            <strong>What to expect</strong>
+            <ul class="note-list">
+                <li>Open Mower needs <code>/tf</code>, <code>/tf_static</code>, and odometry from rosmower to navigate cleanly.</li>
+                <li>The manual camera joystick also publishes to <code>/cmd_vel</code>, so avoid driving manually while the planner is actively navigating.</li>
+                <li>Use the <strong>Open Web UI</strong> button to access the OpenMower visualization and map editor at port 9091.</li>
+            </ul>
+        </div>
+
+        <div id="planner-warning-box" class="warning-box" style="display:none;">
+            <strong>Current warnings</strong>
+            <ul id="planner-warnings" class="warning-list"></ul>
+        </div>
+
+        <div class="logs" id="planner-logs">Loading planner logs…</div>
+    </div>
+
+    <div class="card">
+        <h2>Dock Position</h2>
+
+        <div class="ros-connect">
+            <div class="ros-dot" id="ros-dot"></div>
+            <span id="ros-status">Connecting to ROS bridge…</span>
+        </div>
+
+        <div class="dock-live gps" id="gps-live" style="display:none;">
+            <div>🛰️ Lat: <strong id="live-lat">—</strong></div>
+            <div>🛰️ Lon: <strong id="live-lon">—</strong></div>
+            <div>📶 Fix: <strong id="live-fix">—</strong></div>
+            <button class="btn btn-success" style="padding:6px 14px; font-size:0.82em; margin-left:auto;"
+                onclick="captureGPSasDock()">📍 Capture as Dock</button>
+        </div>
+
+        <div class="dock-live" id="dock-live" style="display:none;">
+            <div>📍 X: <strong id="live-x">—</strong> m</div>
+            <div>📍 Y: <strong id="live-y">—</strong> m</div>
+            <div>🧭 Yaw: <strong id="live-yaw">—</strong>°</div>
+            <div>Status: <strong id="live-status">—</strong></div>
+        </div>
+
+        <div class="summary">
+            Save the dock position here on the rosmower side so Open Mower can use the same docking reference.
+        </div>
+
+        <div class="form-grid">
+            <div class="form-group">
+                <label>X (m) — map frame</label>
+                <input type="number" id="dock-x" step="0.01" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label>Y (m) — map frame</label>
+                <input type="number" id="dock-y" step="0.01" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label>Yaw (degrees)</label>
+                <input type="number" id="dock-yaw" step="1" placeholder="0" value="0">
+            </div>
+            <div class="form-group">
+                <label>Frame ID</label>
+                <input type="text" id="dock-frame" value="map">
+            </div>
+        </div>
+
+        <div class="btn-row">
+            <button class="btn btn-primary" onclick="saveDock()">💾 Save Map-Frame Position</button>
+            <button class="btn btn-success" onclick="dockCommand('SET_DOCK_HERE')">🤖 Set Dock at Robot Pose</button>
+            <button class="btn btn-danger" onclick="dockCommand('CLEAR_DOCK')">🗑️ Clear Dock</button>
+        </div>
+    </div>
+
+    <div id="toast" class="toast"></div>
+
+    <script>
+        const API = '';
+        let ros = null;
+
+        function browserHost() {
+            const host = window.location.hostname || 'localhost';
+            return host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+        }
+
+        function apiUrl(path) {
+            return `${API}${path.startsWith('/') ? path : `/${path}`}`;
+        }
+
+        function buildWebSocketUrl(port) {
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            return `${protocol}://${browserHost()}:${port}`;
+        }
+
+        async function loadPlannerStatus() {
+            try {
+                const res = await fetch(apiUrl('/api/open-mower/status'));
+                const data = await res.json();
+
+                const badge = document.getElementById('planner-badge');
+                badge.textContent = data.running ? 'Online' : 'Offline';
+                badge.className = `badge ${data.running ? 'badge-online' : 'badge-offline'}`;
+
+                document.getElementById('planner-container').textContent = data.container_name || 'Not created';
+                document.getElementById('planner-status').textContent = data.container_status || 'Unknown';
+                document.getElementById('planner-topic').textContent = data.control_topic || '/cmd_vel';
+                document.getElementById('planner-foxglove').textContent = data.foxglove_ws_url || ('http://' + window.location.hostname + ':9091');
+
+                const warningBox = document.getElementById('planner-warning-box');
+                const warningList = document.getElementById('planner-warnings');
+                warningList.innerHTML = '';
+                if (data.warnings && data.warnings.length) {
+                    data.warnings.forEach(warning => {
+                        const li = document.createElement('li');
+                        li.textContent = warning;
+                        warningList.appendChild(li);
+                    });
+                    warningBox.style.display = 'block';
+                } else {
+                    warningBox.style.display = 'none';
+                }
+
+                const logs = data.recent_logs && data.recent_logs.length
+                    ? data.recent_logs.join('\n')
+                    : 'No recent Open Mower logs.';
+                document.getElementById('planner-logs').textContent = logs;
+            } catch (e) {
+                toast(`Failed to load planner status: ${e}`, 'err');
+            }
+        }
+
+        async function plannerAction(action) {
+            try {
+                const res = await fetch(apiUrl(`/api/open-mower/${encodeURIComponent(action)}`), { method: 'POST' });
+                const data = await res.json();
+                if (data.success) {
+                    toast(data.message || `Open Mower ${action} complete`, 'ok');
+                } else {
+                    toast(data.message || `Open Mower ${action} failed`, 'err');
+                }
+                await loadPlannerStatus();
+            } catch (e) {
+                toast(`Open Mower ${action} failed: ${e}`, 'err');
+            }
+        }
+
+        function openMowerUI() {
+            const url = document.getElementById('planner-foxglove').textContent || ('http://' + window.location.hostname + ':9091');
+            window.open(url, '_blank');
+        }
+
+        function connectROS() {
+            const url = buildWebSocketUrl(9090);
+            ros = new ROSLIB.Ros({ url });
+
+            ros.on('connection', () => {
+                document.getElementById('ros-dot').className = 'ros-dot ok';
+                document.getElementById('ros-status').textContent = 'Connected to ROS bridge';
+                subscribeDockStatus();
+            });
+
+            ros.on('error', () => {
+                document.getElementById('ros-dot').className = 'ros-dot err';
+                document.getElementById('ros-status').textContent = 'ROS bridge unavailable — using file-based dock save';
+            });
+
+            ros.on('close', () => {
+                document.getElementById('ros-dot').className = 'ros-dot err';
+                document.getElementById('ros-status').textContent = 'ROS bridge disconnected';
+            });
+        }
+
+        function subscribeDockStatus() {
+            const dockStatusTopic = new ROSLIB.Topic({
+                ros, name: '/dock/status', messageType: 'std_msgs/String'
+            });
+            dockStatusTopic.subscribe(msg => {
+                document.getElementById('live-status').textContent = msg.data;
+            });
+
+            const dockPoseTopic = new ROSLIB.Topic({
+                ros, name: '/dock/pose', messageType: 'geometry_msgs/PoseStamped'
+            });
+            dockPoseTopic.subscribe(msg => {
+                const p = msg.pose.position;
+                const q = msg.pose.orientation;
+                const yaw = (2.0 * Math.atan2(q.z, q.w) * 180 / Math.PI).toFixed(1);
+                document.getElementById('live-x').textContent = p.x.toFixed(3);
+                document.getElementById('live-y').textContent = p.y.toFixed(3);
+                document.getElementById('live-yaw').textContent = yaw;
+                document.getElementById('dock-live').style.display = 'flex';
+            });
+
+            const gpsTopic = new ROSLIB.Topic({
+                ros, name: '/gps/fix', messageType: 'sensor_msgs/NavSatFix'
+            });
+            gpsTopic.subscribe(msg => {
+                const fixLabels = {'-1': 'No Fix', '0': '3D Fix', '1': 'SBAS', '2': 'RTK'};
+                const status = msg.status ? msg.status.status : -1;
+                const fixText = fixLabels[status] ?? `Fix ${status}`;
+                document.getElementById('live-lat').textContent = msg.latitude.toFixed(7);
+                document.getElementById('live-lon').textContent = msg.longitude.toFixed(7);
+                document.getElementById('live-fix').textContent = fixText;
+                document.getElementById('gps-live').style.display = 'flex';
+                window._lastGPS = { lat: msg.latitude, lon: msg.longitude, alt: msg.altitude, fix: status };
+            });
+        }
+
+        async function loadDock() {
+            try {
+                const res = await fetch(apiUrl('/api/dock'));
+                const data = await res.json();
+                if (data.success && data.dock) {
+                    const d = data.dock;
+                    document.getElementById('dock-x').value = d.x ?? '';
+                    document.getElementById('dock-y').value = d.y ?? '';
+                    document.getElementById('dock-yaw').value = d.yaw !== undefined ? (d.yaw * 180 / Math.PI).toFixed(1) : 0;
+                    document.getElementById('dock-frame').value = d.frame_id ?? 'map';
+                }
+            } catch (e) {
+                toast(`Failed to load dock: ${e}`, 'err');
+            }
+        }
+
+        async function captureGPSasDock() {
+            if (!window._lastGPS) {
+                toast('No GPS fix received yet', 'err');
+                return;
+            }
+
+            if (window._lastGPS.fix < 0) {
+                toast('Wait for a valid GPS fix before capturing dock', 'err');
+                return;
+            }
+
+            const res = await fetch(apiUrl('/api/dock/save'), {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    lat: window._lastGPS.lat,
+                    lon: window._lastGPS.lon,
+                    alt: window._lastGPS.alt,
+                    frame_id: document.getElementById('dock-frame').value || 'map'
+                })
+            });
+
+            const data = await res.json();
+            if (data.success) toast('GPS dock saved', 'ok');
+            else toast(data.error || data.message || 'Failed to save dock', 'err');
+        }
+
+        async function saveDock() {
+            const x = parseFloat(document.getElementById('dock-x').value);
+            const y = parseFloat(document.getElementById('dock-y').value);
+            const yawDeg = parseFloat(document.getElementById('dock-yaw').value) || 0;
+            const yaw = yawDeg * Math.PI / 180;
+            const frame_id = document.getElementById('dock-frame').value || 'map';
+
+            if (isNaN(x) || isNaN(y)) {
+                toast('Dock X and Y are required', 'err');
+                return;
+            }
+
+            const res = await fetch(apiUrl('/api/dock/save'), {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ x, y, yaw, frame_id })
+            });
+
+            const data = await res.json();
+            if (data.success) toast('Dock position saved', 'ok');
+            else toast(data.error || data.message || 'Failed to save dock', 'err');
+        }
+
+        async function dockCommand(command) {
+            const res = await fetch(apiUrl('/api/dock/command'), {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ command })
+            });
+            const data = await res.json();
+            if (data.success) toast(data.message, 'ok');
+            else toast(data.error || data.message || 'Dock command failed', 'err');
+        }
+
+        function toast(message, type = 'ok') {
+            const el = document.getElementById('toast');
+            el.textContent = message;
+            el.className = `toast show ${type}`;
+            setTimeout(() => { el.className = 'toast'; }, 3500);
+        }
+
+        loadPlannerStatus();
+        loadDock();
+        connectROS();
+        setInterval(loadPlannerStatus, 5000);
+    </script>
+</body>
+</html>

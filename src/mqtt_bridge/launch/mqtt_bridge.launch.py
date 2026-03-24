@@ -6,7 +6,7 @@ Launch file for MQTT Bridge
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from ament_index_python.packages import get_package_share_directory
 import os
 
@@ -19,7 +19,10 @@ def generate_launch_description():
     # Declare launch arguments
     mqtt_broker_arg = DeclareLaunchArgument(
         'mqtt_broker',
-        default_value='localhost',
+        default_value=EnvironmentVariable(
+            'ROSMOWER_MQTT_BROKER',
+            default_value='homeassistant.local'
+        ),
         description='MQTT broker address'
     )
     
@@ -27,6 +30,33 @@ def generate_launch_description():
         'mqtt_port',
         default_value='1883',
         description='MQTT broker port'
+    )
+
+    mqtt_username_arg = DeclareLaunchArgument(
+        'mqtt_username',
+        default_value=EnvironmentVariable(
+            'ROSMOWER_MQTT_USERNAME',
+            default_value=''
+        ),
+        description='MQTT username'
+    )
+
+    mqtt_password_arg = DeclareLaunchArgument(
+        'mqtt_password',
+        default_value=EnvironmentVariable(
+            'ROSMOWER_MQTT_PASSWORD',
+            default_value=''
+        ),
+        description='MQTT password'
+    )
+
+    mqtt_client_id_arg = DeclareLaunchArgument(
+        'mqtt_client_id',
+        default_value=EnvironmentVariable(
+            'ROSMOWER_MQTT_CLIENT_ID',
+            default_value='rosmower_mqtt_bridge'
+        ),
+        description='MQTT client identifier'
     )
     
     base_topic_arg = DeclareLaunchArgument(
@@ -46,6 +76,9 @@ def generate_launch_description():
             {
                 'mqtt_broker': LaunchConfiguration('mqtt_broker'),
                 'mqtt_port': LaunchConfiguration('mqtt_port'),
+                'mqtt_username': LaunchConfiguration('mqtt_username'),
+                'mqtt_password': LaunchConfiguration('mqtt_password'),
+                'mqtt_client_id': LaunchConfiguration('mqtt_client_id'),
                 'base_topic': LaunchConfiguration('base_topic'),
             }
         ],
@@ -56,6 +89,9 @@ def generate_launch_description():
     return LaunchDescription([
         mqtt_broker_arg,
         mqtt_port_arg,
+        mqtt_username_arg,
+        mqtt_password_arg,
+        mqtt_client_id_arg,
         base_topic_arg,
         mqtt_bridge_node
     ])

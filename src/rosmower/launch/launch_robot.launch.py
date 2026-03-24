@@ -11,8 +11,9 @@ from launch.actions import (
     SetEnvironmentVariable,
 )
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import LaunchConfiguration
+from launch.substitutions import EnvironmentVariable, LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.substitutions import FindPackageShare
 from launch.conditions import IfCondition, UnlessCondition
 
 # Full device path for hoverboard Arduino
@@ -29,6 +30,13 @@ def generate_launch_description():
     # --- Launch arguments (must be declared before use in node conditions) ---
     use_vesc            = LaunchConfiguration('use_vesc')
     use_stereo_camera  = LaunchConfiguration('use_stereo_camera')
+    use_mqtt_bridge    = LaunchConfiguration('use_mqtt_bridge')
+    mqtt_broker        = LaunchConfiguration('mqtt_broker')
+    mqtt_port          = LaunchConfiguration('mqtt_port')
+    mqtt_username      = LaunchConfiguration('mqtt_username')
+    mqtt_password      = LaunchConfiguration('mqtt_password')
+    mqtt_base_topic    = LaunchConfiguration('mqtt_base_topic')
+    mqtt_client_id     = LaunchConfiguration('mqtt_client_id')
 
     # --- Battery Splitter Node ---
     battery_splitter_node = Node(
@@ -115,6 +123,10 @@ def generate_launch_description():
         name='joint_state_publisher',
         output='log',
         arguments=['--ros-args', '--log-level', 'warn'],
+        parameters=[{
+            # Merge live wheel telemetry while keeping zeroed caster joints available.
+            'source_list': ['/wheel_joint_states'],
+        }],
         condition=UnlessCondition(use_joint_state_gui)
     )
     # Run either GUI or headless, but only if ros2_control is disabled
@@ -225,6 +237,21 @@ def generate_launch_description():
         condition=IfCondition(use_rosbridge),
     )
 
+    mqtt_bridge_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            [FindPackageShare('mqtt_bridge'), '/launch/mqtt_bridge.launch.py']
+        ),
+        launch_arguments={
+            'mqtt_broker': mqtt_broker,
+            'mqtt_port': mqtt_port,
+            'mqtt_username': mqtt_username,
+            'mqtt_password': mqtt_password,
+            'mqtt_client_id': mqtt_client_id,
+            'base_topic': mqtt_base_topic,
+        }.items(),
+        condition=IfCondition(use_mqtt_bridge),
+    )
+
     # --- RPLIDAR motor control node ---
     rplidar_motor_control = Node(
         package='rosmower',
@@ -312,6 +339,39 @@ def generate_launch_description():
         condition=IfCondition(use_mavros),
     )
 
+    blade_controller_node = Node(
+        package='rosmower',
+        executable='blade_controller.py',
+        name='blade_controller',
+        output='screen',
+        parameters=[{
+            'blade_motor_channel': 1,
+            'blade_motor_min_pwm': 1000,
+            'blade_motor_min_running_pwm': 1500,
+            'blade_motor_max_pwm': 3000,
+            'blade_motor_stop_pwm': 1000,
+            'blade_motor_start_pop_pwm': 2000,
+            'blade_motor_start_pop_duration_sec': 0.15,
+            'blade_motor_ramp_step_pwm': 100,
+            'blade_motor_ramp_interval_sec': 0.1,
+            'blade_height_spin_lock_percent': 100.0,
+            'height_ramp_step_percent': 5.0,
+            'height_ramp_interval_sec': 0.1,
+            'height_servo_left_trim_pwm': 0,
+            'height_servo_right_trim_pwm': 0,
+            'height_servo_trim_min_pwm': -300,
+            'height_servo_trim_max_pwm': 300,
+            'height_servo_left_channel': 6,
+            'height_servo_right_channel': 7,
+            'height_servo_left_high_pwm': 1650,
+            'height_servo_left_low_pwm': 1000,
+            'height_servo_right_high_pwm': 1000,
+            'height_servo_right_low_pwm': 1650,
+            'default_height_percent': 100.0,
+        }],
+        condition=IfCondition(use_mavros),
+    )
+
     return LaunchDescription([
         DeclareLaunchArgument('use_sim_time', default_value='false'),
         DeclareLaunchArgument('use_ros2_control', default_value='false'),
@@ -328,6 +388,47 @@ def generate_launch_description():
                               description='Launch VESC differential drive motor controller'),
         DeclareLaunchArgument('use_rosbridge', default_value='true',
                               description='Launch rosbridge websocket for web UI (port 9090)'),
+        DeclareLaunchArgument('use_mqtt_bridge', default_value='false',
+                              description='Launch MQTT bridge for Home Assistant / telemetry'),
+        DeclareLaunchArgument(
+            'mqtt_broker',
+            default_value=EnvironmentVariable(
+                'ROSMOWER_MQTT_BROKER',
+                default_value='homeassistant.local'
+            ),
+            description='MQTT broker hostname'
+        ),
+        DeclareLaunchArgument('mqtt_port', default_value='1883',
+                              description='MQTT broker port'),
+        DeclareLaunchArgument(
+            'mqtt_username',
+            default_value=EnvironmentVariable(
+                'ROSMOWER_MQTT_USERNAME',
+                default_value=''
+            ),
+            description='MQTT broker username'
+        ),
+        DeclareLaunchArgument(
+            'mqtt_password',
+            default_value=EnvironmentVariable(
+                'ROSMOWER_MQTT_PASSWORD',
+                default_value=''
+            ),
+            description='MQTT broker password'
+        ),
+        DeclareLaunchArgument(
+            'mqtt_base_topic',
+            default_value='rosmower',
+            description='Base MQTT topic prefix'
+        ),
+        DeclareLaunchArgument(
+            'mqtt_client_id',
+            default_value=EnvironmentVariable(
+                'ROSMOWER_MQTT_CLIENT_ID',
+                default_value='rosmower_mqtt_bridge'
+            ),
+            description='MQTT bridge client ID'
+        ),
 
         quiet_env,
         rsp,
@@ -341,7 +442,8 @@ def generate_launch_description():
         battery_monitor_node,
         cmd_vel_gate_node,
         mavros_node,
+        blade_controller_node,
+        mqtt_bridge_launch,
         vesc_launch,          # VESC differential drive motor controller
         rosbridge_node,       # rosbridge websocket for web UI (port 9090)
     ])
-

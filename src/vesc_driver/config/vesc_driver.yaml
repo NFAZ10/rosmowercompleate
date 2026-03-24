@@ -14,8 +14,8 @@ pole_pairs: 15  # Hoverboard BLDC motors typically have 15 pole pairs
 max_rpm: 3000  # Maximum ERPM (electrical RPM) safety limit
 
 # VESC CAN IDs
-left_vesc_can_id: 0   # VESC ID 0 (connected via USB)
-right_vesc_can_id: 47  # VESC ID 1 (connected via CAN bus)
+left_vesc_can_id: 5   # VESC ID 0 (connected via USB)
+right_vesc_can_id: 0  # VESC ID 1 (connected via CAN bus)
 
 # Control loop rates
 control_rate: 50.0     # Hz - cmd_vel processing rate

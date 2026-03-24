@@ -15,6 +15,7 @@ import numpy as np
 import subprocess
 import threading
 import io
+import shutil
 
 
 class StereoCameraNode(Node):
@@ -58,6 +59,9 @@ class StereoCameraNode(Node):
         # AWB, NR, CCM) without needing nvarguscamerasrc or a display/EGL session.
         import os
         self._use_v4l2_argus = 'libv4l2_nvargus' in os.environ.get('LD_PRELOAD', '')
+        self._use_v4l2_capture = False
+        self._use_v4l2_raw_capture = False
+        self._backend_name = 'GStreamer/ISP' if self.use_gstreamer else 'V4L2 RG10 raw'
         
         # Create CV Bridge
         self.bridge = CvBridge()
@@ -69,6 +73,7 @@ class StereoCameraNode(Node):
         self._v4l2_raw_width = 3280
         self._v4l2_raw_height = 2464
         self._v4l2_frame_bytes = self._v4l2_raw_width * self._v4l2_raw_height * 2
+        self._v4l2_rg10_fourcc = cv2.VideoWriter_fourcc(*'RG10')
         self._last_init_attempt = 0.0  # Timestamp of last init attempt (for retry cooldown)
         
         # Publishers - raw images
@@ -93,7 +98,7 @@ class StereoCameraNode(Node):
         self.get_logger().info(f'Stereo Camera Node started')
         self.get_logger().info(f'Left camera ID: {self.left_camera_id}, Right camera ID: {self.right_camera_id}')
         self.get_logger().info(f'Resolution: {self.width}x{self.height} @ {self.fps} FPS')
-        self.get_logger().info(f'Backend: {"GStreamer/ISP" if self.use_gstreamer else ("V4L2+ArgusISP" if self._use_v4l2_argus else "V4L2 raw")}')
+        self.get_logger().info(f'Backend: {self._backend_name}')
         self.get_logger().info(f'Publishing: {"Raw + Compressed" if self.publish_raw else "Compressed only"}')
         self.get_logger().info(f'JPEG quality: {self.jpeg_quality}%')
     
@@ -150,39 +155,7 @@ class StereoCameraNode(Node):
                         # Parse as uint16 (2 bytes/pixel, little-endian)
                         bayer16 = np.frombuffer(raw, dtype=np.uint16).reshape(
                             self._v4l2_raw_height, self._v4l2_raw_width)
-                        # Crop Bayer BEFORE debayering (0.9MP instead of 8MP — 9x speedup).
-                        # Align crop to even pixel boundary to preserve RGGB pattern.
-                        cy = ((self._v4l2_raw_height - self.height) // 2) & ~1
-                        cx = ((self._v4l2_raw_width  - self.width)  // 2) & ~1
-                        bayer_crop = bayer16[cy:cy + self.height, cx:cx + self.width]
-                        # IMX219 RG10: MSB-aligned 10-bit in uint16 → >>8 for 8-bit.
-                        # Use 2nd–98th percentile as exposure window — robust to hot pixels,
-                        # avoids the noise amplification of stretching min→0, max→255.
-                        bayer8 = (bayer_crop >> 8).astype(np.float32)
-                        p_lo, p_hi = float(np.percentile(bayer8, 2)), float(np.percentile(bayer8, 98))
-                        if p_hi > p_lo + 1:
-                            bayer8 = np.clip((bayer8 - p_lo) / (p_hi - p_lo) * 255, 0, 255).astype(np.uint8)
-                        else:
-                            bayer8 = bayer8.astype(np.uint8)
-                        # Debayer SRGGB (RGGB) → BGR — confirmed by Waveshare IMX219-83 datasheet
-                        bgr = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
-                        # Edge-preserving denoise: bilateral filter smooths grain while keeping edges sharp.
-                        if self.denoise:
-                            bgr = cv2.bilateralFilter(bgr, d=5, sigmaColor=40, sigmaSpace=40)
-                        # Gray-world white balance: scale each channel to match global mean.
-                        # More stable than per-channel NORM_MINMAX which is easily skewed by bright outliers.
-                        b_ch, g_ch, r_ch = cv2.split(bgr.astype(np.float32))
-                        b_mean = np.mean(b_ch) + 1e-6
-                        g_mean = np.mean(g_ch) + 1e-6
-                        r_mean = np.mean(r_ch) + 1e-6
-                        gray = (b_mean + g_mean + r_mean) / 3.0
-                        b_ch = np.clip(b_ch * (gray / b_mean), 0, 255).astype(np.uint8)
-                        g_ch = np.clip(g_ch * (gray / g_mean), 0, 255).astype(np.uint8)
-                        r_ch = np.clip(r_ch * (gray / r_mean), 0, 255).astype(np.uint8)
-                        frame = cv2.merge([b_ch, g_ch, r_ch])
-                        # Boost mid-tones (gamma < 1.0 = brighter). 0.5 balances brightness vs noise.
-                        lut = np.array([min(255, int(255 * (i / 255.0) ** 0.5)) for i in range(256)], dtype=np.uint8)
-                        frame = lut[frame]
+                        frame = self._decode_bayer16_frame(bayer16)
                         # Discard old frame, put latest
                         try:
                             frame_queue.get_nowait()
@@ -213,12 +186,135 @@ class StereoCameraNode(Node):
         except queue_mod.Empty:
             return None
 
+    def _decode_bayer16_frame(self, bayer16):
+        # Crop Bayer BEFORE debayering (0.9MP instead of 8MP — 9x speedup).
+        # Align crop to even pixel boundary to preserve RGGB pattern.
+        cy = ((self._v4l2_raw_height - self.height) // 2) & ~1
+        cx = ((self._v4l2_raw_width - self.width) // 2) & ~1
+        bayer_crop = bayer16[cy:cy + self.height, cx:cx + self.width]
+        # V4L2 RG10 stores the 10-bit Bayer sample expanded in the low bits of
+        # a 16-bit word. Convert that 10-bit range down to 8-bit before
+        # percentile normalization.
+        # Use 2nd–98th percentile as exposure window — robust to hot pixels,
+        # avoids the noise amplification of stretching min→0, max→255.
+        bayer10 = (bayer_crop & 0x03FF).astype(np.float32)
+        bayer8 = (bayer10 / 4.0)
+        p_lo, p_hi = float(np.percentile(bayer8, 2)), float(np.percentile(bayer8, 98))
+        if p_hi > p_lo + 1:
+            bayer8 = np.clip((bayer8 - p_lo) / (p_hi - p_lo) * 255, 0, 255).astype(np.uint8)
+        else:
+            bayer8 = bayer8.astype(np.uint8)
+        # Debayer SRGGB (RGGB) → BGR — confirmed by Waveshare IMX219-83 datasheet
+        bgr = cv2.cvtColor(bayer8, cv2.COLOR_BAYER_RG2BGR)
+        # Edge-preserving denoise: bilateral filter smooths grain while keeping edges sharp.
+        if self.denoise:
+            bgr = cv2.bilateralFilter(bgr, d=5, sigmaColor=40, sigmaSpace=40)
+        # Gray-world white balance: scale each channel to match global mean.
+        # More stable than per-channel NORM_MINMAX which is easily skewed by bright outliers.
+        b_ch, g_ch, r_ch = cv2.split(bgr.astype(np.float32))
+        b_mean = np.mean(b_ch) + 1e-6
+        g_mean = np.mean(g_ch) + 1e-6
+        r_mean = np.mean(r_ch) + 1e-6
+        gray = (b_mean + g_mean + r_mean) / 3.0
+        b_ch = np.clip(b_ch * (gray / b_mean), 0, 255).astype(np.uint8)
+        g_ch = np.clip(g_ch * (gray / g_mean), 0, 255).astype(np.uint8)
+        r_ch = np.clip(r_ch * (gray / r_mean), 0, 255).astype(np.uint8)
+        frame = cv2.merge([b_ch, g_ch, r_ch])
+        # Boost mid-tones (gamma < 1.0 = brighter). 0.5 balances brightness vs noise.
+        lut = np.array([min(255, int(255 * (i / 255.0) ** 0.5)) for i in range(256)], dtype=np.uint8)
+        return lut[frame]
+
+    def _decode_rg10_frame(self, raw_frame):
+        if raw_frame is None:
+            return None
+
+        if raw_frame.dtype == np.uint16 and raw_frame.shape == (self._v4l2_raw_height, self._v4l2_raw_width):
+            bayer16 = raw_frame
+        else:
+            raw = raw_frame.reshape(-1)
+            if raw.size != self._v4l2_frame_bytes:
+                self.get_logger().error(
+                    f'Unexpected RG10 frame size: got {raw.size}, expected {self._v4l2_frame_bytes}',
+                    throttle_duration_sec=5.0,
+                )
+                return None
+            bayer16 = np.frombuffer(raw.tobytes(), dtype=np.uint16).reshape(
+                self._v4l2_raw_height, self._v4l2_raw_width
+            )
+
+        return self._decode_bayer16_frame(bayer16)
+
+    def _cleanup_camera_resources(self):
+        if self.left_cap:
+            self.left_cap.release()
+        if self.right_cap:
+            self.right_cap.release()
+        if self.left_v4l2_proc:
+            self.left_v4l2_proc[0].terminate()
+        if self.right_v4l2_proc:
+            self.right_v4l2_proc[0].terminate()
+        self.left_cap = None
+        self.right_cap = None
+        self.left_v4l2_proc = None
+        self.right_v4l2_proc = None
+        self._use_v4l2_capture = False
+        self._use_v4l2_raw_capture = False
+
+    def _open_v4l2_capture(self, device_id, name):
+        cap = cv2.VideoCapture(device_id, cv2.CAP_V4L2)
+        if not cap or not cap.isOpened():
+            self.get_logger().error(f'Failed to open {name} camera with direct V4L2 (/dev/video{device_id})')
+            return None
+        
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
+        cap.set(cv2.CAP_PROP_FPS, self.fps)
+
+        ret, frame = cap.read()
+        if not ret or frame is None:
+            self.get_logger().error(f'{name} camera opened via direct V4L2 but could not read a frame')
+            cap.release()
+            return None
+
+        self.get_logger().info(
+            f'{name} camera opened with direct V4L2: {frame.shape[1]}x{frame.shape[0]}'
+        )
+        return cap
+
+    def _open_v4l2_raw_capture(self, device_id, name):
+        cap = cv2.VideoCapture(device_id, cv2.CAP_V4L2)
+        if not cap or not cap.isOpened():
+            self.get_logger().error(f'Failed to open {name} camera for RG10 capture (/dev/video{device_id})')
+            return None
+        
+        cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        cap.set(cv2.CAP_PROP_FOURCC, self._v4l2_rg10_fourcc)
+        cap.set(cv2.CAP_PROP_CONVERT_RGB, 0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, self._v4l2_raw_width)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self._v4l2_raw_height)
+
+        ret, raw_frame = cap.read()
+        decoded = self._decode_rg10_frame(raw_frame) if ret else None
+        if decoded is None:
+            self.get_logger().error(f'{name} camera opened for RG10 capture but could not decode a frame')
+            cap.release()
+            return None
+
+        self.get_logger().info(
+            f'{name} camera opened with RG10 capture: {decoded.shape[1]}x{decoded.shape[0]}'
+        )
+        return cap
+    
     def init_cameras(self):
         """Initialize camera captures using GStreamer or V4L2"""
         try:
+            self._cleanup_camera_resources()
+
             if self.use_gstreamer:
                 # Use hardware-accelerated GStreamer for Jetson CSI cameras
                 self.get_logger().info('Opening cameras with GStreamer (nvarguscamerasrc)...')
+                self._backend_name = 'GStreamer/ISP'
                 
                 # Use sensor_id (CSI port index 0/1), not V4L2 device number
                 left_pipeline = self.gstreamer_pipeline(
@@ -252,31 +348,30 @@ class StereoCameraNode(Node):
                 
             else:
                 # V4L2 raw mode: IMX219 only outputs RG10 (uint16 Bayer).
-                # OpenCV cannot decode RG10 correctly, so use v4l2-ctl subprocess.
-                # Exception: if libv4l2_nvargus is LD_PRELOADed, OpenCV V4L2 routes
-                # through the Jetson Argus ISP and returns proper BGR frames directly.
+                # When libv4l2_nvargus is preloaded, OpenCV routes through the Jetson
+                # ISP and returns BGR frames directly. Otherwise request raw RG10 and
+                # debayer in-process.
                 if self._use_v4l2_argus:
                     self.get_logger().info('Opening cameras with V4L2+ArgusISP (libv4l2_nvargus)...')
-                    self.left_cap = cv2.VideoCapture(self.left_camera_id, cv2.CAP_V4L2)
-                    self.right_cap = cv2.VideoCapture(self.right_camera_id, cv2.CAP_V4L2)
-                    for cap, name in [(self.left_cap, 'left'), (self.right_cap, 'right')]:
-                        if cap and cap.isOpened():
-                            cap.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
-                            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
-                            cap.set(cv2.CAP_PROP_FPS, self.fps)
-                            w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                            h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-                            self.get_logger().info(f'{name} camera opened via ArgusISP: {w}x{h}')
-                else:
-                    self.get_logger().info('Opening cameras with V4L2 raw reader (RG10 uint16 Bayer)...')
+                    self._use_v4l2_capture = True
+                    self._backend_name = 'V4L2+ArgusISP'
+                    self.left_cap = self._open_v4l2_capture(self.left_camera_id, 'left')
+                    self.right_cap = self._open_v4l2_capture(self.right_camera_id, 'right')
+                elif shutil.which('v4l2-ctl'):
+                    self.get_logger().info('Opening cameras with V4L2 raw reader threads...')
+                    self._backend_name = 'V4L2 raw reader'
                     self.left_v4l2_proc = self._start_v4l2_raw(self.left_camera_id)
                     self.right_v4l2_proc = self._start_v4l2_raw(self.right_camera_id)
-                
-                left_ok = self.left_v4l2_proc is not None
-                right_ok = self.right_v4l2_proc is not None
+                else:
+                    self.get_logger().warn('v4l2-ctl not found; falling back to direct V4L2 RG10 capture')
+                    self._use_v4l2_capture = True
+                    self._use_v4l2_raw_capture = True
+                    self._backend_name = 'V4L2 RG10 raw'
+                    self.left_cap = self._open_v4l2_raw_capture(self.left_camera_id, 'left')
+                    self.right_cap = self._open_v4l2_raw_capture(self.right_camera_id, 'right')
             
             # Report final status
-            if self.use_gstreamer or self._use_v4l2_argus:
+            if self.use_gstreamer or self._use_v4l2_capture:
                 left_ok = self.left_cap and self.left_cap.isOpened()
                 right_ok = self.right_cap and self.right_cap.isOpened()
             else:
@@ -366,7 +461,7 @@ class StereoCameraNode(Node):
     
     def capture_and_publish(self):
         """Capture frames from both cameras and publish"""
-        if self.use_gstreamer or self._use_v4l2_argus:
+        if self.use_gstreamer or self._use_v4l2_capture:
             left_ok = self.left_cap and self.left_cap.isOpened()
             right_ok = self.right_cap and self.right_cap.isOpened()
         else:
@@ -386,11 +481,15 @@ class StereoCameraNode(Node):
             # Capture left frame
             frame_left = None
             if left_ok:
-                if self.use_gstreamer or self._use_v4l2_argus:
-                    ret, frame_left = self.left_cap.read()
+                if self.use_gstreamer or self._use_v4l2_capture:
+                    ret, left_raw = self.left_cap.read()
                     if not ret:
                         frame_left = None
-                    elif frame_left is not None and (frame_left.shape[1] != self.width or frame_left.shape[0] != self.height):
+                    elif self._use_v4l2_raw_capture:
+                        frame_left = self._decode_rg10_frame(left_raw)
+                    else:
+                        frame_left = left_raw
+                    if frame_left is not None and (frame_left.shape[1] != self.width or frame_left.shape[0] != self.height):
                         # ISP may return a different resolution — resize to target
                         frame_left = cv2.resize(frame_left, (self.width, self.height))
                 else:
@@ -399,11 +498,15 @@ class StereoCameraNode(Node):
             # Capture right frame
             frame_right = None
             if right_ok:
-                if self.use_gstreamer or self._use_v4l2_argus:
-                    ret, frame_right = self.right_cap.read()
+                if self.use_gstreamer or self._use_v4l2_capture:
+                    ret, right_raw = self.right_cap.read()
                     if not ret:
                         frame_right = None
-                    elif frame_right is not None and (frame_right.shape[1] != self.width or frame_right.shape[0] != self.height):
+                    elif self._use_v4l2_raw_capture:
+                        frame_right = self._decode_rg10_frame(right_raw)
+                    else:
+                        frame_right = right_raw
+                    if frame_right is not None and (frame_right.shape[1] != self.width or frame_right.shape[0] != self.height):
                         frame_right = cv2.resize(frame_right, (self.width, self.height))
                 else:
                     frame_right = self._read_v4l2_raw_frame(self.right_v4l2_proc)
@@ -450,14 +553,7 @@ class StereoCameraNode(Node):
     
     def destroy_node(self):
         """Clean up when node is destroyed"""
-        if self.left_cap:
-            self.left_cap.release()
-        if self.right_cap:
-            self.right_cap.release()
-        if self.left_v4l2_proc:
-            self.left_v4l2_proc[0].terminate()
-        if self.right_v4l2_proc:
-            self.right_v4l2_proc[0].terminate()
+        self._cleanup_camera_resources()
         cv2.destroyAllWindows()
         super().destroy_node()
 

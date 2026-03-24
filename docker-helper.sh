@@ -173,6 +173,11 @@ case "$1" in
         echo "Use arrow keys to control the robot (i/k for forward/back, j/l for left/right)"
         $COMPOSE_CMD --profile dev run --rm --name rosmower_teleop dev ros2 run teleop_twist_keyboard teleop_twist_keyboard
         ;;
+    "idle")
+        echo "Starting container in idle mode (no ROS launch)..."
+        $COMPOSE_CMD --profile dev run -d --rm --name rosmower_robot dev tail -f /dev/null
+        echo "Container running. Connect with: docker exec -it rosmower_robot bash"
+        ;;
     "shell")
         echo "Opening shell in running container..."
         docker exec -it rosmower_robot bash
@@ -228,7 +233,8 @@ case "$1" in
         echo "  mission [-d|--detached]  - Launch OpenMower Mission executor (optional: detached)"
   echo "  recorder [-d|--detached] - Launch Zone Recorder for boundary recording (optional: detached)"
         echo "  rqt [-d|--detached] - Launch RQt GUI tools (optional: detached mode)"
-        echo "  teleop  - Launch teleop keyboard controller"
+        echo "  idle    - Start container in idle mode (no ROS launch, use shell to connect)"
+  echo "  teleop  - Launch teleop keyboard controller"
         echo "  shell   - Open shell in running container"
         echo "  logs    - Show container logs"
         echo "  stop    - Stop all ROS mower containers (keeps containers)"

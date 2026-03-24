@@ -18,6 +18,7 @@ find_package(ament_cmake REQUIRED)
 # ROS 2 deps for the Python nodes
 find_package(rclpy REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(mavros_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(std_msgs REQUIRED)
 find_package(std_srvs REQUIRED)
@@ -30,6 +31,7 @@ install(
 
 # Install Python executables
 install(PROGRAMS
+  scripts/blade_controller.py
   scripts/hoverboard_bridge_node.py
   scripts/lidar_scan_guard.py
   scripts/imu_bridge.py

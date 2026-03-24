@@ -164,6 +164,11 @@
             border: 1px solid #333;
             flex-shrink: 0;
         }
+
+        .control-section.warning {
+            border-color: #ff9800;
+            background: rgba(255, 152, 0, 0.12);
+        }
         
         .section-title {
             font-size: 0.9em;
@@ -340,6 +345,85 @@
             color: #4CAF50;
             font-weight: 600;
         }
+
+        .blade-row {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+        }
+
+        .blade-row input[type="range"] {
+            flex: 1;
+        }
+
+        .blade-value {
+            min-width: 64px;
+            text-align: right;
+            font-weight: 600;
+            color: #4CAF50;
+            font-family: 'Courier New', monospace;
+        }
+
+        .trim-label {
+            min-width: 42px;
+            font-size: 0.8em;
+            color: #bbb;
+            font-weight: 600;
+        }
+
+        .blade-status {
+            margin-top: 10px;
+            padding: 8px;
+            border-radius: 6px;
+            background: #101010;
+            border: 1px solid #333;
+            font-size: 0.75em;
+            line-height: 1.4;
+            color: #ccc;
+        }
+
+        .blade-help {
+            margin-top: 8px;
+            font-size: 0.72em;
+            line-height: 1.4;
+            color: #999;
+        }
+
+        .button-group.three-up {
+            grid-template-columns: repeat(3, 1fr);
+        }
+
+        .button-group.four-up {
+            grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
+        .control-button.preset {
+            background: #455A64;
+            font-size: 0.9em;
+            padding: 10px;
+        }
+
+        .control-button.preset.active {
+            background: #607D8B;
+            box-shadow: 0 0 12px rgba(255, 255, 255, 0.25);
+        }
+
+        .control-button.blade-action {
+            background: #1565C0;
+        }
+
+        .control-button.blade-stop {
+            background: #d32f2f;
+        }
+
+        .control-button.trim-action {
+            background: #006064;
+        }
+
+        .control-button.trim-reset {
+            background: #455A64;
+        }
         
         /* Footer */
         .footer {
@@ -451,6 +535,13 @@
             
             <!-- Control Panel -->
             <div class="control-panel">
+                <div class="control-section warning">
+                    <div class="section-title">Planner Safety</div>
+                    <div style="font-size: 0.85em; line-height: 1.4; color: #ffcc80;">
+                        Manual teleop publishes directly to <code>/cmd_vel</code>. Stop the Open Mower planner before driving here so the planner and joystick do not fight each other.
+                    </div>
+                </div>
+
                 <!-- Joystick Control -->
                 <div class="control-section">
                     <div class="section-title">Movement Control</div>
@@ -492,6 +583,116 @@
                         <button class="control-button danger" onclick="emergencyStop()">E-STOP</button>
                     </div>
                 </div>
+
+                <div class="control-section">
+                    <div class="section-title">Blade Height</div>
+                    <div class="blade-row">
+                        <input
+                            type="range"
+                            class="speed-slider"
+                            id="blade-height-slider"
+                            min="0"
+                            max="100"
+                            step="1"
+                            value="100"
+                            style="--value: 100%"
+                            oninput="handleBladeHeightSliderInput()"
+                        >
+                        <div class="blade-value" id="blade-height-value">100%</div>
+                    </div>
+                    <div class="button-group three-up">
+                        <button class="control-button" onclick="setBladeHeightQuickValue(100)">High</button>
+                        <button class="control-button" onclick="setBladeHeightQuickValue(0)">Low</button>
+                        <button class="control-button blade-action" onclick="publishBladeHeight()">Apply</button>
+                    </div>
+                    <div class="button-group four-up" style="margin-top: 10px;">
+                        <button class="control-button preset" id="blade-preset-1in" onclick="selectBladeHeightPreset('1in')">1"</button>
+                        <button class="control-button preset" id="blade-preset-2in" onclick="selectBladeHeightPreset('2in')">2"</button>
+                        <button class="control-button preset" id="blade-preset-3in" onclick="selectBladeHeightPreset('3in')">3"</button>
+                        <button class="control-button preset" onclick="storeSelectedBladeHeightPreset()">Store</button>
+                    </div>
+                    <div class="blade-status" id="blade-height-status">
+                        Draft: 100% (high cut height) · Applied: waiting for ROS
+                    </div>
+                    <div class="blade-help" id="blade-height-preset-status">
+                        Stored in this browser: 1" not stored · 2" not stored · 3" not stored
+                    </div>
+                    <div class="blade-help">
+                        100% is fully high and 0% is fully low. At the highest position, blade spin commands are locked out.
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <div class="section-title">Height Servo Trim</div>
+                    <div class="blade-row">
+                        <div class="trim-label">Left</div>
+                        <input
+                            type="range"
+                            class="speed-slider"
+                            id="blade-left-trim-slider"
+                            min="-300"
+                            max="300"
+                            step="5"
+                            value="0"
+                            style="--value: 50%"
+                            oninput="handleBladeLeftTrimSliderInput()"
+                        >
+                        <div class="blade-value" id="blade-left-trim-value">0</div>
+                    </div>
+                    <div class="blade-row">
+                        <div class="trim-label">Right</div>
+                        <input
+                            type="range"
+                            class="speed-slider"
+                            id="blade-right-trim-slider"
+                            min="-300"
+                            max="300"
+                            step="5"
+                            value="0"
+                            style="--value: 50%"
+                            oninput="handleBladeRightTrimSliderInput()"
+                        >
+                        <div class="blade-value" id="blade-right-trim-value">0</div>
+                    </div>
+                    <div class="button-group">
+                        <button class="control-button trim-action" onclick="publishBladeServoTrim()">Apply Trim</button>
+                        <button class="control-button trim-reset" onclick="zeroBladeServoTrim()">Zero Trim</button>
+                    </div>
+                    <div class="blade-status" id="blade-trim-status">
+                        Draft: L 0 / R 0 · Applied: waiting for ROS
+                    </div>
+                    <div class="blade-help">
+                        Positive trim increases that side's servo PWM. Use this to level the deck, then send me the final values if you want them saved as defaults.
+                    </div>
+                </div>
+
+                <div class="control-section">
+                    <div class="section-title">Blade Motor PWM</div>
+                    <div class="blade-row">
+                        <input
+                            type="range"
+                            class="speed-slider"
+                            id="blade-motor-slider"
+                            min="1000"
+                            max="3000"
+                            step="10"
+                            value="1000"
+                            style="--value: 0%"
+                            oninput="handleBladeMotorSliderInput()"
+                        >
+                        <div class="blade-value" id="blade-motor-value">1000</div>
+                    </div>
+                    <div class="button-group">
+                        <button class="control-button blade-action" onclick="publishBladeMotorPwm()">Set PWM</button>
+                        <button class="control-button blade-stop" onclick="stopBladeMotor()">Stop Blade</button>
+                    </div>
+                    <div class="blade-status" id="blade-motor-status">
+                        Draft: 1000 us (stopped) · Applied: waiting for ROS
+                    </div>
+                    <div class="blade-help">
+                        1000 stops the blade, 1500 is the minimum spinning speed, and startup sends a quick 2000 pop before ramping. Blade spin is blocked when height is fully high.
+                    </div>
+                </div>
             </div>
         </div>
         
@@ -504,17 +705,50 @@
     <script>
         // ROS Connection
         let ros = null;
+        let rosConnected = false;
         let cmdVelTopic = null;
         let imageTopic = null;
+        let bladeHeightCommandTopic = null;
+        let bladeHeightStateTopic = null;
+        let bladeMotorCommandTopic = null;
+        let bladeMotorStateTopic = null;
+        let bladeTrimCommandTopic = null;
+        let bladeTrimStateTopic = null;
         
         // Joystick state
         let joystickActive = false;
         let speedMultiplier = 0.75;
         let maxLinearSpeed = 1.0; // m/s
         let maxAngularSpeed = 2.0; // rad/s
+        const BLADE_HEIGHT_PRESET_STORAGE_KEY = 'rosmower_blade_height_presets_v1';
+        const BLADE_MOTOR_STOP_PWM = 1000;
+        const BLADE_MOTOR_MIN_RUNNING_PWM = 1500;
+        const BLADE_MOTOR_MAX_PWM = 3000;
+        const BLADE_SERVO_TRIM_MIN_PWM = -300;
+        const BLADE_SERVO_TRIM_MAX_PWM = 300;
+        let bladeHeightDraftPercent = 100;
+        let bladeHeightAppliedPercent = null;
+        let bladeHeightPendingLocalEdit = false;
+        let bladeMotorDraftPwm = BLADE_MOTOR_STOP_PWM;
+        let bladeMotorAppliedPwm = null;
+        let bladeMotorPendingLocalEdit = false;
+        let bladeLeftTrimDraftPwm = 0;
+        let bladeRightTrimDraftPwm = 0;
+        let bladeLeftTrimAppliedPwm = null;
+        let bladeRightTrimAppliedPwm = null;
+        let bladeTrimPendingLocalEdit = false;
+        let selectedBladeHeightPreset = null;
+        let bladeHeightPresets = loadBladeHeightPresets();
         
+        function buildWebSocketUrl(port) {
+            const host = window.location.hostname || 'localhost';
+            const safeHost = host.includes(':') && !host.startsWith('[') ? `[${host}]` : host;
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            return `${protocol}://${safeHost}:${port}`;
+        }
+
         // Connect to ROS
-        let rosbridgeUrl = `ws://${window.location.hostname}:9090`;
+        let rosbridgeUrl = buildWebSocketUrl(9090);
         
         function connectROS() {
             ros = new ROSLIB.Ros({
@@ -523,6 +757,7 @@
             
             ros.on('connection', function() {
                 console.log('Connected to ROSBridge');
+                rosConnected = true;
                 document.getElementById('ros-status').classList.add('connected');
                 document.getElementById('connection-text').textContent = 'Connected';
                 setupTopics();
@@ -530,11 +765,13 @@
             
             ros.on('error', function(error) {
                 console.log('Error connecting to ROSBridge:', error);
+                rosConnected = false;
                 document.getElementById('connection-text').textContent = 'Connection Error';
             });
             
             ros.on('close', function() {
                 console.log('Connection to ROSBridge closed');
+                rosConnected = false;
                 document.getElementById('ros-status').classList.remove('connected');
                 document.getElementById('connection-text').textContent = 'Disconnected';
                 setTimeout(connectROS, 2000);
@@ -554,6 +791,54 @@
             cmdVelTopic.advertise();
             
             console.log('Command velocity topic advertised on /cmd_vel');
+
+            bladeHeightCommandTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/blade/height_percent_cmd',
+                messageType: 'std_msgs/Float32'
+            });
+            bladeHeightCommandTopic.advertise();
+
+            bladeHeightStateTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/blade/height_percent',
+                messageType: 'std_msgs/Float32'
+            });
+            bladeHeightStateTopic.subscribe(function(message) {
+                applyBladeHeightState(message.data);
+            });
+
+            bladeMotorCommandTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/blade/motor_pwm_cmd',
+                messageType: 'std_msgs/UInt16'
+            });
+            bladeMotorCommandTopic.advertise();
+
+            bladeMotorStateTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/blade/motor_pwm',
+                messageType: 'std_msgs/UInt16'
+            });
+            bladeMotorStateTopic.subscribe(function(message) {
+                applyBladeMotorState(message.data);
+            });
+
+            bladeTrimCommandTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/blade/height_servo_trim_pwm_cmd',
+                messageType: 'std_msgs/Int16MultiArray'
+            });
+            bladeTrimCommandTopic.advertise();
+
+            bladeTrimStateTopic = new ROSLIB.Topic({
+                ros: ros,
+                name: '/blade/height_servo_trim_pwm',
+                messageType: 'std_msgs/Int16MultiArray'
+            });
+            bladeTrimStateTopic.subscribe(function(message) {
+                applyBladeTrimState(message.data);
+            });
             
             // Camera subscriber (compressed image)
             imageTopic = new ROSLIB.Topic({
@@ -566,6 +851,392 @@
             imageTopic.subscribe(function(message) {
                 displayImage('camera-feed', 'placeholder-feed', message.data);
             });
+        }
+
+        function loadBladeHeightPresets() {
+            const fallback = { '1in': null, '2in': null, '3in': null };
+
+            try {
+                const raw = window.localStorage.getItem(BLADE_HEIGHT_PRESET_STORAGE_KEY);
+                if (!raw) {
+                    return { ...fallback };
+                }
+
+                const parsed = JSON.parse(raw);
+                return {
+                    '1in': Number.isFinite(parsed['1in']) ? Math.round(parsed['1in']) : null,
+                    '2in': Number.isFinite(parsed['2in']) ? Math.round(parsed['2in']) : null,
+                    '3in': Number.isFinite(parsed['3in']) ? Math.round(parsed['3in']) : null,
+                };
+            } catch (error) {
+                console.warn('Unable to load blade height presets:', error);
+                return { ...fallback };
+            }
+        }
+
+        function saveBladeHeightPresets() {
+            try {
+                window.localStorage.setItem(
+                    BLADE_HEIGHT_PRESET_STORAGE_KEY,
+                    JSON.stringify(bladeHeightPresets)
+                );
+            } catch (error) {
+                console.warn('Unable to save blade height presets:', error);
+            }
+        }
+
+        function ensureRosConnected() {
+            if (!rosConnected) {
+                alert('Not connected to ROSBridge yet.');
+                return false;
+            }
+            return true;
+        }
+
+        function formatBladeHeightStatus(percent) {
+            if (percent <= 0) {
+                return 'low cut height';
+            }
+            if (percent >= 100) {
+                return 'high cut height';
+            }
+            return 'intermediate cut height';
+        }
+
+        function formatBladeMotorStatus(pwm) {
+            if (pwm <= BLADE_MOTOR_STOP_PWM) {
+                return 'stopped';
+            }
+            if (pwm < BLADE_MOTOR_MIN_RUNNING_PWM) {
+                return 'below spin threshold';
+            }
+            return 'running';
+        }
+
+        function getBladeHeightPresetLabel(presetKey) {
+            const labels = {
+                '1in': '1"',
+                '2in': '2"',
+                '3in': '3"',
+            };
+            return labels[presetKey] || presetKey;
+        }
+
+        function formatStoredBladeHeightPreset(presetKey) {
+            const value = bladeHeightPresets[presetKey];
+            return value === null ? 'not stored' : `${Math.round(value)}%`;
+        }
+
+        function formatBladeTrimPwm(pwm) {
+            const rounded = Math.round(Number(pwm));
+            return rounded > 0 ? `+${rounded}` : `${rounded}`;
+        }
+
+        function updateRangeBackground(slider, percent) {
+            slider.style.setProperty('--value', `${percent}%`);
+        }
+
+        function normalizeRequestedBladeMotorPwm(pwm) {
+            const rounded = Math.max(
+                BLADE_MOTOR_STOP_PWM,
+                Math.min(BLADE_MOTOR_MAX_PWM, Math.round(Number(pwm)))
+            );
+
+            if (rounded > BLADE_MOTOR_STOP_PWM && rounded < BLADE_MOTOR_MIN_RUNNING_PWM) {
+                return BLADE_MOTOR_MIN_RUNNING_PWM;
+            }
+
+            return rounded;
+        }
+
+        function clampBladeMotorPwm(pwm) {
+            return Math.max(
+                BLADE_MOTOR_STOP_PWM,
+                Math.min(BLADE_MOTOR_MAX_PWM, Math.round(Number(pwm)))
+            );
+        }
+
+        function clampBladeServoTrimPwm(pwm) {
+            return Math.max(
+                BLADE_SERVO_TRIM_MIN_PWM,
+                Math.min(BLADE_SERVO_TRIM_MAX_PWM, Math.round(Number(pwm)))
+            );
+        }
+
+        function renderBladeHeightDraft() {
+            const rounded = Math.round(bladeHeightDraftPercent);
+            const slider = document.getElementById('blade-height-slider');
+            slider.value = rounded;
+            updateRangeBackground(slider, rounded);
+            document.getElementById('blade-height-value').textContent = `${rounded}%`;
+        }
+
+        function renderBladeMotorDraft() {
+            const rounded = Math.round(bladeMotorDraftPwm);
+            const slider = document.getElementById('blade-motor-slider');
+            slider.value = rounded;
+            updateRangeBackground(
+                slider,
+                ((rounded - BLADE_MOTOR_STOP_PWM) / (BLADE_MOTOR_MAX_PWM - BLADE_MOTOR_STOP_PWM)) * 100
+            );
+            document.getElementById('blade-motor-value').textContent = `${rounded}`;
+        }
+
+        function renderBladeTrimDraft() {
+            const roundedLeft = Math.round(bladeLeftTrimDraftPwm);
+            const roundedRight = Math.round(bladeRightTrimDraftPwm);
+            const leftSlider = document.getElementById('blade-left-trim-slider');
+            const rightSlider = document.getElementById('blade-right-trim-slider');
+            leftSlider.value = roundedLeft;
+            rightSlider.value = roundedRight;
+            updateRangeBackground(
+                leftSlider,
+                ((roundedLeft - BLADE_SERVO_TRIM_MIN_PWM) / (BLADE_SERVO_TRIM_MAX_PWM - BLADE_SERVO_TRIM_MIN_PWM)) * 100
+            );
+            updateRangeBackground(
+                rightSlider,
+                ((roundedRight - BLADE_SERVO_TRIM_MIN_PWM) / (BLADE_SERVO_TRIM_MAX_PWM - BLADE_SERVO_TRIM_MIN_PWM)) * 100
+            );
+            document.getElementById('blade-left-trim-value').textContent = formatBladeTrimPwm(roundedLeft);
+            document.getElementById('blade-right-trim-value').textContent = formatBladeTrimPwm(roundedRight);
+        }
+
+        function renderBladeHeightPresetButtons() {
+            ['1in', '2in', '3in'].forEach((presetKey) => {
+                const button = document.getElementById(`blade-preset-${presetKey}`);
+                if (!button) {
+                    return;
+                }
+                button.classList.toggle('active', selectedBladeHeightPreset === presetKey);
+            });
+        }
+
+        function renderBladeHeightPresetSummary() {
+            document.getElementById('blade-height-preset-status').textContent =
+                `Stored in this browser: 1" ${formatStoredBladeHeightPreset('1in')} · ` +
+                `2" ${formatStoredBladeHeightPreset('2in')} · ` +
+                `3" ${formatStoredBladeHeightPreset('3in')}`;
+        }
+
+        function renderBladeHeightStatus() {
+            const roundedDraft = Math.round(bladeHeightDraftPercent);
+            const appliedText = bladeHeightAppliedPercent === null
+                ? 'waiting for ROS'
+                : `${Math.round(bladeHeightAppliedPercent)}% (${formatBladeHeightStatus(bladeHeightAppliedPercent)})`;
+            const presetText = selectedBladeHeightPreset === null
+                ? 'none'
+                : `${getBladeHeightPresetLabel(selectedBladeHeightPreset)} (${formatStoredBladeHeightPreset(selectedBladeHeightPreset)})`;
+
+            document.getElementById('blade-height-status').textContent =
+                `Draft: ${roundedDraft}% (${formatBladeHeightStatus(roundedDraft)}) · ` +
+                `Applied: ${appliedText} · Selected preset: ${presetText}`;
+            renderBladeHeightPresetButtons();
+            renderBladeHeightPresetSummary();
+        }
+
+        function renderBladeMotorStatus() {
+            const roundedDraft = Math.round(bladeMotorDraftPwm);
+            const appliedText = bladeMotorAppliedPwm === null
+                ? 'waiting for ROS'
+                : `${Math.round(bladeMotorAppliedPwm)} us (${formatBladeMotorStatus(bladeMotorAppliedPwm)})`;
+
+            document.getElementById('blade-motor-status').textContent =
+                `Draft: ${roundedDraft} us (${formatBladeMotorStatus(roundedDraft)}) · Applied: ${appliedText}`;
+        }
+
+        function renderBladeTrimStatus() {
+            const roundedLeftDraft = Math.round(bladeLeftTrimDraftPwm);
+            const roundedRightDraft = Math.round(bladeRightTrimDraftPwm);
+            const appliedText = bladeLeftTrimAppliedPwm === null || bladeRightTrimAppliedPwm === null
+                ? 'waiting for ROS'
+                : `L ${formatBladeTrimPwm(bladeLeftTrimAppliedPwm)} / R ${formatBladeTrimPwm(bladeRightTrimAppliedPwm)}`;
+
+            document.getElementById('blade-trim-status').textContent =
+                `Draft: L ${formatBladeTrimPwm(roundedLeftDraft)} / R ${formatBladeTrimPwm(roundedRightDraft)} · ` +
+                `Applied: ${appliedText}`;
+        }
+
+        function setBladeHeightDraft(percent, markPending = true) {
+            const rounded = Math.max(0, Math.min(100, Math.round(Number(percent))));
+            bladeHeightDraftPercent = rounded;
+            bladeHeightPendingLocalEdit = markPending;
+            renderBladeHeightDraft();
+            renderBladeHeightStatus();
+        }
+
+        function setBladeMotorDraft(pwm, markPending = true) {
+            const rounded = normalizeRequestedBladeMotorPwm(pwm);
+            bladeMotorDraftPwm = rounded;
+            bladeMotorPendingLocalEdit = markPending;
+            renderBladeMotorDraft();
+            renderBladeMotorStatus();
+        }
+
+        function setBladeTrimDraft(leftTrimPwm, rightTrimPwm, markPending = true) {
+            bladeLeftTrimDraftPwm = clampBladeServoTrimPwm(leftTrimPwm);
+            bladeRightTrimDraftPwm = clampBladeServoTrimPwm(rightTrimPwm);
+            bladeTrimPendingLocalEdit = markPending;
+            renderBladeTrimDraft();
+            renderBladeTrimStatus();
+        }
+
+        function handleBladeHeightSliderInput() {
+            setBladeHeightDraft(document.getElementById('blade-height-slider').value, true);
+        }
+
+        function handleBladeMotorSliderInput() {
+            setBladeMotorDraft(document.getElementById('blade-motor-slider').value, true);
+        }
+
+        function handleBladeLeftTrimSliderInput() {
+            setBladeTrimDraft(
+                document.getElementById('blade-left-trim-slider').value,
+                bladeRightTrimDraftPwm,
+                true
+            );
+        }
+
+        function handleBladeRightTrimSliderInput() {
+            setBladeTrimDraft(
+                bladeLeftTrimDraftPwm,
+                document.getElementById('blade-right-trim-slider').value,
+                true
+            );
+        }
+
+        function applyBladeHeightState(percent) {
+            bladeHeightAppliedPercent = Math.max(0, Math.min(100, Math.round(Number(percent))));
+            if (!bladeHeightPendingLocalEdit) {
+                setBladeHeightDraft(bladeHeightAppliedPercent, false);
+                return;
+            }
+            renderBladeHeightStatus();
+        }
+
+        function applyBladeMotorState(pwm) {
+            bladeMotorAppliedPwm = clampBladeMotorPwm(pwm);
+            if (!bladeMotorPendingLocalEdit) {
+                bladeMotorDraftPwm = bladeMotorAppliedPwm;
+                bladeMotorPendingLocalEdit = false;
+                renderBladeMotorDraft();
+                renderBladeMotorStatus();
+                return;
+            }
+            renderBladeMotorStatus();
+        }
+
+        function applyBladeTrimState(trimValues) {
+            if (!Array.isArray(trimValues) || trimValues.length < 2) {
+                return;
+            }
+
+            bladeLeftTrimAppliedPwm = clampBladeServoTrimPwm(trimValues[0]);
+            bladeRightTrimAppliedPwm = clampBladeServoTrimPwm(trimValues[1]);
+
+            if (!bladeTrimPendingLocalEdit) {
+                bladeLeftTrimDraftPwm = bladeLeftTrimAppliedPwm;
+                bladeRightTrimDraftPwm = bladeRightTrimAppliedPwm;
+                bladeTrimPendingLocalEdit = false;
+                renderBladeTrimDraft();
+                renderBladeTrimStatus();
+                return;
+            }
+
+            renderBladeTrimStatus();
+        }
+
+        function setBladeHeightQuickValue(percent) {
+            setBladeHeightDraft(percent, true);
+            publishBladeHeight();
+        }
+
+        function selectBladeHeightPreset(presetKey) {
+            selectedBladeHeightPreset = presetKey;
+            const storedValue = bladeHeightPresets[presetKey];
+
+            if (storedValue === null) {
+                renderBladeHeightStatus();
+                return;
+            }
+
+            setBladeHeightDraft(storedValue, true);
+            if (rosConnected) {
+                publishBladeHeight();
+            }
+        }
+
+        function storeSelectedBladeHeightPreset() {
+            if (selectedBladeHeightPreset === null) {
+                alert('Select 1\", 2\", or 3\" first, then press Store.');
+                return;
+            }
+
+            bladeHeightPresets[selectedBladeHeightPreset] = Math.round(bladeHeightDraftPercent);
+            saveBladeHeightPresets();
+            renderBladeHeightStatus();
+        }
+
+        function publishBladeHeight() {
+            if (!ensureRosConnected()) {
+                return;
+            }
+
+            const percent = Math.round(bladeHeightDraftPercent);
+            const message = new ROSLIB.Message({
+                data: percent
+            });
+
+            bladeHeightPendingLocalEdit = false;
+            bladeHeightCommandTopic.publish(message);
+            renderBladeHeightStatus();
+        }
+
+        function publishBladeMotorPwm() {
+            if (!ensureRosConnected()) {
+                return;
+            }
+
+            const pwm = Math.round(bladeMotorDraftPwm);
+            const message = new ROSLIB.Message({
+                data: pwm
+            });
+
+            bladeMotorPendingLocalEdit = false;
+            bladeMotorCommandTopic.publish(message);
+            renderBladeMotorStatus();
+        }
+
+        function stopBladeMotor() {
+            bladeMotorDraftPwm = BLADE_MOTOR_STOP_PWM;
+            bladeMotorPendingLocalEdit = true;
+            renderBladeMotorDraft();
+            renderBladeMotorStatus();
+            publishBladeMotorPwm();
+        }
+
+        function publishBladeServoTrim() {
+            if (!ensureRosConnected()) {
+                return;
+            }
+
+            const leftTrimPwm = Math.round(bladeLeftTrimDraftPwm);
+            const rightTrimPwm = Math.round(bladeRightTrimDraftPwm);
+            const message = new ROSLIB.Message({
+                layout: {
+                    dim: [],
+                    data_offset: 0
+                },
+                data: [leftTrimPwm, rightTrimPwm]
+            });
+
+            bladeTrimPendingLocalEdit = false;
+            bladeTrimCommandTopic.publish(message);
+            renderBladeTrimStatus();
+        }
+
+        function zeroBladeServoTrim() {
+            setBladeTrimDraft(0, 0, true);
+            publishBladeServoTrim();
         }
         
         // Display image on canvass
@@ -740,6 +1411,13 @@
                 document.getElementById('speed-display').textContent = value;
                 this.style.setProperty('--value', value + '%');
             });
+
+            renderBladeHeightDraft();
+            renderBladeHeightStatus();
+            renderBladeTrimDraft();
+            renderBladeTrimStatus();
+            renderBladeMotorDraft();
+            renderBladeMotorStatus();
             
             console.log('Controls initialized successfully');
         }

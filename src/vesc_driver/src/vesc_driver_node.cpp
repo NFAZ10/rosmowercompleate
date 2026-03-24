@@ -26,8 +26,8 @@ public:
     declare_parameter("wheel_radius", 0.0875);  // meters (hoverboard wheel ~175mm diameter)
     declare_parameter("wheel_separation", 0.52);  // meters
     declare_parameter("pole_pairs", 15);  // Hoverboard motors typically 15 pole pairs
-    declare_parameter("left_vesc_can_id", 0);  // VESC ID 0 (connected via USB)
-    declare_parameter("right_vesc_can_id", 47);  // VESC ID 1 (connected via CAN)
+    declare_parameter("left_vesc_can_id", 0);  // 0 means this wheel is the USB-connected local VESC
+    declare_parameter("right_vesc_can_id", 47);  // Non-zero wheel IDs are reached over CAN
     declare_parameter("invert_left_motor", false);
     declare_parameter("invert_right_motor", false);
     declare_parameter("max_rpm", 3000);  // kept for reference; not used in duty cycle mode
@@ -182,21 +182,33 @@ private:
     vesc_->processResponse(5);
   }
 
-  void telemetryLoop() {
-    // Request local VESC telemetry first, then wait for its fast response
-    if (left_can_id_ == 0) {
+  void requestTelemetryForWheel(int can_id) {
+    if (can_id == 0) {
       vesc_->requestTelemetry();
-    } else {
-      vesc_->requestTelemetryCAN(left_can_id_);
+      // Local USB response arrives in ~2-5ms.
+      vesc_->processResponse(15);
+      return;
     }
-    // Local USB response arrives in ~2-5ms
-    vesc_->processResponse(15);
 
-    // Request CAN VESC telemetry separately — CAN round-trip takes 20-50ms
-    if (right_can_id_ != left_can_id_) {
-      vesc_->requestTelemetryCAN(right_can_id_);
-      // Wait long enough for: USB→VESC0→CAN→VESC47→CAN→VESC0→USB
-      vesc_->processResponse(60);
+    vesc_->requestTelemetryCAN(can_id);
+    // CAN round-trip takes longer because the USB-connected VESC forwards the request.
+    vesc_->processResponse(60);
+  }
+
+  void telemetryLoop() {
+    const bool left_is_local = left_can_id_ == 0;
+    const bool right_is_local = right_can_id_ == 0;
+
+    // Whichever wheel is configured as CAN ID 0 is the USB-connected local VESC.
+    if (left_is_local || right_is_local) {
+      requestTelemetryForWheel(0);
+    }
+
+    if (!left_is_local) {
+      requestTelemetryForWheel(left_can_id_);
+    }
+    if (!right_is_local && right_can_id_ != left_can_id_) {
+      requestTelemetryForWheel(right_can_id_);
     }
 
     // Drain any remaining buffered data from either VESC
@@ -211,14 +223,19 @@ private:
     }
   }
 
-  void setMotorERPM(int32_t left_erpm, int32_t right_erpm) {
-    if (left_can_id_ == 0) {
-      vesc_->setRPM(left_erpm);
-    } else {
-      vesc_->setRPMCAN(left_can_id_, left_erpm);
+  void setWheelERPM(int can_id, int32_t erpm) {
+    if (can_id == 0) {
+      vesc_->setRPM(erpm);
+      return;
     }
+
+    vesc_->setRPMCAN(can_id, erpm);
+  }
+
+  void setMotorERPM(int32_t left_erpm, int32_t right_erpm) {
+    setWheelERPM(left_can_id_, left_erpm);
     if (right_can_id_ != left_can_id_) {
-      vesc_->setRPMCAN(right_can_id_, right_erpm);
+      setWheelERPM(right_can_id_, right_erpm);
     }
   }
 

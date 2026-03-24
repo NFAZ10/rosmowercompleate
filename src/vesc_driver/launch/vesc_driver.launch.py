@@ -44,13 +44,13 @@ def generate_launch_description():
     
     left_can_id_arg = DeclareLaunchArgument(
         'left_vesc_can_id',
-        default_value='0',
+        default_value='5',
         description='Left VESC CAN ID (0 = USB connected)'
     )
     
     right_can_id_arg = DeclareLaunchArgument(
         'right_vesc_can_id',
-        default_value='5',
+        default_value='0',
         description='Right VESC CAN ID (connected via CAN bus)'
     )
     
@@ -112,6 +112,7 @@ def generate_launch_description():
         output='screen',
         remappings=[
             ('/cmd_vel', '/cmd_vel_motors'),  # gate node controls access
+            ('joint_states', '/wheel_joint_states'),
         ],
         parameters=[
             #config_file,

@@ -1,33 +1,38 @@
 #!/usr/bin/env python3
 
 """
-Stereo Camera Launch for Jetson CSI Cameras (IMX219)
-Publishes to ROS 2 topics for RViz and Isaac ROS navigation
+Stereo camera launch for Jetson IMX219 cameras.
+Defaults to the Argus/GStreamer path while still exposing V4L2 fallback IDs.
 """
 
 from launch import LaunchDescription
 from launch_ros.actions import Node
 from launch.actions import DeclareLaunchArgument
 from launch.substitutions import LaunchConfiguration
-from ament_index_python.packages import get_package_share_directory
-import os
-
-
 def generate_launch_description():
-    # Get package directory
-    pkg_dir = get_package_share_directory('stereo_camera_viewer')
-    
     # Declare launch arguments with sensible defaults for Jetson + IMX219
     left_camera_arg = DeclareLaunchArgument(
         'left_camera_id',
-        default_value='0',
-        description='Left camera CSI sensor ID (0 for CAM0 port)'
+        default_value='2',
+        description='Left V4L2 device index for the stereo fallback (/dev/video2)'
     )
     
     right_camera_arg = DeclareLaunchArgument(
         'right_camera_id',
         default_value='1',
-        description='Right camera CSI sensor ID (1 for CAM1 port)'
+        description='Right V4L2 device index for the stereo fallback (/dev/video1)'
+    )
+
+    left_sensor_arg = DeclareLaunchArgument(
+        'left_sensor_id',
+        default_value='0',
+        description='Left nvarguscamerasrc sensor-id (CAM0 port)'
+    )
+
+    right_sensor_arg = DeclareLaunchArgument(
+        'right_sensor_id',
+        default_value='1',
+        description='Right nvarguscamerasrc sensor-id (CAM1 port)'
     )
     
     width_arg = DeclareLaunchArgument(
@@ -50,8 +55,8 @@ def generate_launch_description():
     
     use_gstreamer_arg = DeclareLaunchArgument(
         'use_gstreamer',
-        default_value='false',
-        description='Use GStreamer for CSI cameras (false=V4L2, works better in Docker)'
+        default_value='true',
+        description='Use GStreamer for CSI cameras (true=Argus/Jetson ISP, false=V4L2 fallback)'
     )
     
     flip_method_arg = DeclareLaunchArgument(
@@ -75,6 +80,8 @@ def generate_launch_description():
         parameters=[{
             'left_camera_id': LaunchConfiguration('left_camera_id'),
             'right_camera_id': LaunchConfiguration('right_camera_id'),
+            'left_sensor_id': LaunchConfiguration('left_sensor_id'),
+            'right_sensor_id': LaunchConfiguration('right_sensor_id'),
             'width': LaunchConfiguration('width'),
             'height': LaunchConfiguration('height'),
             'fps': LaunchConfiguration('fps'),
@@ -88,6 +95,8 @@ def generate_launch_description():
     return LaunchDescription([
         left_camera_arg,
         right_camera_arg,
+        left_sensor_arg,
+        right_sensor_arg,
         width_arg,
         height_arg,
         fps_arg,

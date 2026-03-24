@@ -6,6 +6,7 @@ Serves the mode control interface and provides API for system control
 
 from flask import Flask, render_template, jsonify, send_from_directory, request
 from flask_cors import CORS
+import errno
 import subprocess
 import os
 import signal
@@ -21,10 +22,15 @@ CORS(app)
 
 # Path to docker-helper.sh
 DOCKER_HELPER = '/mnt/nova_ssd/rosmowercompleate/docker-helper.sh'
+OPEN_MOWER_ROOT = Path('/home/nfazio/openmower-docker/openmower-humble')
+OPEN_MOWER_SERVICE = 'open_mower_humble'
+OPENMOWER_MAIN_CONTAINER = 'open_mower_humble'
 
 # Track running processes
 running_processes = {}
 process_lock = threading.Lock()
+
+PORT_WAIT_TIMEOUT_SECONDS = 30
 
 def get_ros_container():
     """Get the name of the running ROS container (prefer rosmower_launch, then rosmower_robot, then others)."""
@@ -55,6 +61,125 @@ def get_device_ip():
     except Exception:
         return '127.0.0.1'
 
+def get_web_port():
+    """Return the configured web server port."""
+    raw_port = os.environ.get('ROSMOWER_WEB_PORT', '80').strip()
+    try:
+        port = int(raw_port)
+    except ValueError as exc:
+        raise ValueError(f'Invalid ROSMOWER_WEB_PORT: {raw_port!r}') from exc
+
+    if not 1 <= port <= 65535:
+        raise ValueError(f'ROSMOWER_WEB_PORT must be between 1 and 65535, got {port}')
+
+    return port
+
+def wait_for_port_release(host, port, timeout_seconds=PORT_WAIT_TIMEOUT_SECONDS):
+    """Wait for the listen port to become available during boot-time races."""
+    deadline = time.monotonic() + timeout_seconds
+
+    while True:
+        probe = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        probe.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        try:
+            probe.bind((host, port))
+            return
+        except OSError as exc:
+            if exc.errno != errno.EADDRINUSE:
+                raise
+
+            remaining = max(0, int(deadline - time.monotonic()))
+            if remaining == 0:
+                raise TimeoutError(
+                    f'Port {port} is still in use after waiting {timeout_seconds} seconds'
+                ) from exc
+
+            print(f'Port {port} is busy, waiting for it to become available ({remaining}s left)...')
+            time.sleep(1)
+        finally:
+            probe.close()
+
+def run_open_mower_compose(args, timeout=30):
+    """Run docker compose commands for the Open Mower stack."""
+    if not OPEN_MOWER_ROOT.exists():
+        raise FileNotFoundError(f'Open Mower directory not found at {OPEN_MOWER_ROOT}')
+
+    return subprocess.run(
+        ['docker', 'compose', *args],
+        cwd=str(OPEN_MOWER_ROOT),
+        capture_output=True,
+        text=True,
+        timeout=timeout
+    )
+
+def get_open_mower_status():
+    """Return status for the Open Mower runtime by querying the container directly."""
+    status = {
+        'available': OPEN_MOWER_ROOT.exists(),
+        'compose_dir': str(OPEN_MOWER_ROOT),
+        'service': OPEN_MOWER_SERVICE,
+        'running': False,
+        'container_name': None,
+        'container_status': 'Not running',
+        'foxglove_ws_url': f'http://{get_device_ip()}:9091',
+        'control_topic': '/cmd_vel',
+        'key_topics': [],
+        'warnings': [],
+        'recent_logs': [],
+    }
+
+    if not status['available']:
+        status['warnings'].append(f'Open Mower directory not found at {OPEN_MOWER_ROOT}')
+        return status
+
+    try:
+        ps_result = subprocess.run(
+            ['docker', 'ps', '--filter', f'name={OPENMOWER_MAIN_CONTAINER}',
+             '--format', '{{.Names}}\t{{.Status}}'],
+            capture_output=True, text=True, timeout=5
+        )
+        lines = [l.strip() for l in ps_result.stdout.splitlines() if l.strip()]
+        if lines:
+            parts = lines[0].split('\t')
+            container_status = parts[1] if len(parts) > 1 else 'Unknown'
+            status.update({
+                'running': 'Up' in container_status,
+                'container_name': parts[0],
+                'container_status': container_status,
+            })
+
+        if status['running']:
+            topic_result = subprocess.run(
+                ['docker', 'exec', OPENMOWER_MAIN_CONTAINER, 'bash', '-lc',
+                 'source /opt/ros/humble/setup.bash 2>/dev/null; '
+                 'source /opt/ws/install/local_setup.bash 2>/dev/null; '
+                 'timeout 4 ros2 topic list 2>/dev/null'],
+                capture_output=True, text=True, timeout=8
+            )
+            if topic_result.returncode == 0:
+                available_topics = {l.strip() for l in topic_result.stdout.splitlines() if l.strip()}
+                for topic in ['/cmd_vel', '/map_grid', '/mowing_map', '/odometry/filtered/map', '/tf', '/tf_static']:
+                    if topic in available_topics:
+                        status['key_topics'].append(topic)
+
+            log_result = subprocess.run(
+                ['docker', 'logs', '--no-color', '--tail', '20', OPENMOWER_MAIN_CONTAINER],
+                capture_output=True, text=True, timeout=10
+            )
+            if log_result.returncode == 0:
+                combined = log_result.stdout + log_result.stderr
+                recent_logs = [l for l in combined.splitlines() if l.strip()]
+                status['recent_logs'] = recent_logs[-20:]
+                status['warnings'] = [
+                    l for l in status['recent_logs']
+                    if 'Timed out waiting for transform' in l or '[ERROR]' in l or '[FATAL]' in l
+                ][-5:]
+
+    except Exception as exc:
+        status['warnings'].append(str(exc))
+
+    return status
+
 @app.route('/')
 def index():
     """Serve the main control page."""
@@ -70,15 +195,16 @@ def status_page():
     """Serve the status monitoring page."""
     return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'status.html')
 
+@app.route('/open-mower')
 @app.route('/zones')
 def zone_manager_page():
-    """Serve the zone manager page."""
-    return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'zone_manager.html')
+    """Serve the Open Mower companion control page."""
+    return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'open_mower_control.html')
 
 @app.route('/zones/recorder')
 def zone_recorder_page():
-    """Serve the zone recorder page."""
-    return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'zone_recorder.html')
+    """Legacy route redirected to the Open Mower companion control page."""
+    return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'open_mower_control.html')
 
 @app.route('/mission-setup')
 def mission_setup_page():
@@ -127,6 +253,45 @@ def get_status():
         })
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/open-mower/status', methods=['GET'])
+def get_open_mower_companion_status():
+    """Return status for the Open Mower companion planner stack."""
+    status = get_open_mower_status()
+    return jsonify({'success': True, **status})
+
+@app.route('/api/open-mower/<action>', methods=['POST'])
+def control_open_mower_companion(action):
+    """Start, stop, or restart the Open Mower planner stack."""
+    compose_actions = {
+        'start':   ['-f', 'docker-compose.yaml', '-f', 'docker-compose.ui.yml', 'up', '-d'],
+        'stop':    ['-f', 'docker-compose.yaml', '-f', 'docker-compose.ui.yml', 'stop'],
+        'restart': ['-f', 'docker-compose.yaml', '-f', 'docker-compose.ui.yml', 'restart'],
+    }
+
+    if action not in compose_actions:
+        return jsonify({'success': False, 'message': f'Unsupported action: {action}'}), 400
+
+    try:
+        result = run_open_mower_compose(compose_actions[action], timeout=180)
+        status = get_open_mower_status()
+        success = result.returncode == 0
+        message = {
+            'start':   'Open Mower started',
+            'stop':    'Open Mower stopped',
+            'restart': 'Open Mower restarted',
+        }[action]
+
+        return jsonify({
+            'success': success,
+            'action': action,
+            'message': message if success else (result.stderr or result.stdout or f'Failed to {action} Open Mower'),
+            'stdout': result.stdout[-4000:],
+            'stderr': result.stderr[-4000:],
+            'status': status,
+        }), (200 if success else 500)
+    except Exception as exc:
+        return jsonify({'success': False, 'message': str(exc)}), 500
 
 @app.route('/api/command/<cmd>')
 def execute_command(cmd):
@@ -1041,8 +1206,8 @@ def cleanup():
 
 @app.route('/routes')
 def route_manager_page():
-    """Serve the route manager page."""
-    return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'zone_routes.html')
+    """Legacy route redirected to the Open Mower companion control page."""
+    return send_from_directory('/mnt/nova_ssd/rosmowercompleate/src/rosmower/web', 'open_mower_control.html')
 
 @app.route('/api/routes/list', methods=['GET'])
 def list_routes():
@@ -1284,14 +1449,23 @@ def update_zone_priority():
 if __name__ == '__main__':
     import atexit
     atexit.register(cleanup)
-    
+
+    try:
+        web_port = get_web_port()
+        wait_for_port_release('0.0.0.0', web_port)
+    except (ValueError, TimeoutError) as exc:
+        print(f'Failed to start web server: {exc}')
+        raise SystemExit(1) from exc
+
+    port_suffix = '' if web_port == 80 else f':{web_port}'
+
     print('=' * 60)
     print('ROS Mower Web Server Starting')
     print('=' * 60)
     print('Access the control panel at:')
-    print('  http://localhost:8080')
-    print('  http://<your-robot-ip>:8080')
+    print(f'  http://localhost{port_suffix}')
+    print(f'  http://<your-robot-ip>{port_suffix}')
     print('=' * 60)
-    
+
     # Run server
-    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=web_port, debug=False, threaded=True)
